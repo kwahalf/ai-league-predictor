@@ -1,0 +1,92 @@
+# LiteLLM proxy configuration.
+#
+# This file is the mapping between what an agent ASKS FOR and what actually
+# serves it. `model_name` is the alias an agent's YAML names; `litellm_params.model`
+# is the real upstream. Changing which model an agent runs on becomes an edit here
+# and a proxy restart, rather than a code change.
+#
+# Start it (opt-in, so `make up` does not):
+#
+#     docker compose --profile litellm up -d litellm
+#
+# Then point an agent at it:
+#
+#     provider: litellm
+#     model: gpt-5.5
+#
+# Credentials are read from the environment by the proxy, so they live in `.env`
+# and never reach the worker. `os.environ/NAME` is LiteLLM's own syntax for that,
+# resolved inside the proxy container — it is not shell interpolation.
+
+model_list:
+  # The alias the retention/kitchen agents ask for.
+  - model_name: gpt-5.5
+    litellm_params:
+      model: azure/gpt-5.5 # azure/<your deployment name>
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+
+  # A second alias onto the same deployment, for handing teams a cheap default
+  # they can swap without touching their agent config.
+  - model_name: workshop-default
+    litellm_params:
+      model: azure/gpt-5.5
+      api_base: os.environ/AZURE_API_BASE
+      api_key: os.environ/AZURE_API_KEY
+      api_version: os.environ/AZURE_API_VERSION
+
+  # DO NOT ROUTE CLAUDE THROUGH HERE. The template's canonical transcript is the
+  # Anthropic message shape, so Claude via this proxy is a lossy round trip
+  # (Anthropic -> OpenAI -> LiteLLM -> Anthropic) and thinking blocks do not
+  # survive it. Use `provider: claude`, which talks to Claude directly.
+  #
+  # - model_name: claude-opus-5
+  #   litellm_params:
+  #     model: anthropic/claude-opus-5
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+  # Strip parameters an upstream model does not accept rather than returning 400.
+  # The worker always sends `max_completion_tokens` and, when an agent declares an
+  # answer_schema, `response_format: json_schema` — this keeps a model that lacks
+  # one of them usable instead of failing every run.
+  drop_params: true
+  # Seconds. The worker's own ceiling is 120s (openai_chat.REQUEST_TIMEOUT_SECONDS),
+  # so keep this under that and the proxy fails first, with a clearer message.
+  request_timeout: 110
+
+general_settings:
+  # AUTHENTICATION IS ON. The value comes from LITELLM_MASTER_KEY and MUST BE
+  # NON-EMPTY.
+  #
+  # Verified, because two plausible-sounding assumptions about this turned out to be
+  # wrong. The proxy reads LITELLM_MASTER_KEY from its ENVIRONMENT, not only from
+  # this file, and docker-compose passes the variable through even when it is blank.
+  # So an empty value does not open the proxy -- it enables auth with a key nothing
+  # can match, and every request comes back `401 Authentication Error, No api key
+  # passed in`, including requests that send no key at all. Commenting this line out
+  # does not help either, for the same reason.
+  #
+  # If you want an open proxy, remove LITELLM_MASTER_KEY from the litellm service in
+  # docker-compose.yml entirely. Otherwise give it a value and use it.
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+  # PER-TEAM KEYS AND SPEND CAPS NEED A DATABASE, not just a master key. Without
+  # one the proxy is effectively stateless: you can use the master key and the
+  # aliases above, but you cannot mint scoped keys via /key/generate and spend is
+  # not persisted -- so every team would share the master key and there would be
+  # no per-team cap, which is the whole reason to run a proxy. Uncomment and point
+  # this at a Postgres database to get them:
+  #
+  # database_url: os.environ/LITELLM_DATABASE_URL
+  #
+  # Then, per team:
+  #   curl -X POST http://localhost:4000/key/generate \
+  #     -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  #     -H "Content-Type: application/json" \
+  #     -d '{"models": ["gpt-5.5"], "max_budget": 5.00, "rpm_limit": 20,
+  #          "key_alias": "team-3"}'
+  #
+  # and give each team its key as LITELLM_API_KEY. That is the whole reason to run
+  # a proxy for a room of people on one upstream key.

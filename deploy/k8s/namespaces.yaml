@@ -1,0 +1,20 @@
+# Nonprod namespaces for the application.
+# Apply with: kubectl apply -f deploy/k8s/namespaces.yaml
+#
+# These are dedicated namespaces — do NOT reuse the existing other repositories
+# `dev`/`test`/`prod` namespaces (see docs/specs/live-cluster-deploy-smoke-rollback.md).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: <DEV_NAMESPACE>
+  labels:
+    app.kubernetes.io/part-of: <APP_NAME>
+    app.factory/environment: dev
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: <TEST_NAMESPACE>
+  labels:
+    app.kubernetes.io/part-of: <APP_NAME>
+    app.factory/environment: test

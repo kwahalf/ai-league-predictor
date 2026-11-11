@@ -1,0 +1,14 @@
+name: ai-league-predictor-dev
+
+services:
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+
+  temporal-worker:
+    volumes:
+      - ./temporal:/app
+    command: ["python", "-m", "src.worker"]

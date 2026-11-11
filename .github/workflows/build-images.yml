@@ -1,0 +1,101 @@
+name: Build Images
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+          - image_name: temporal-worker
+            context: ./temporal
+            dockerfile: ./temporal/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Evaluate push gate
+        id: push-gate
+        shell: bash
+        env:
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          REGISTRY: ${{ vars.ACR_LOGIN_SERVER }}
+          REGISTRY_USERNAME: ${{ secrets.ACR_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: ./.github/scripts/build-images-metadata.sh push-gate
+
+      - name: Push skipped (credentials/vars missing)
+        if: ${{ steps.push-gate.outputs.is_main_push == 'true' && steps.push-gate.outputs.enabled != 'true' }}
+        run: ./.github/scripts/build-images-metadata.sh skip-message
+
+      - name: Log in to registry
+        if: ${{ steps.push-gate.outputs.enabled == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Compute image tags
+        id: image-tags
+        shell: bash
+        env:
+          REGISTRY: ${{ vars.ACR_LOGIN_SERVER }}
+          IMAGE_NAME: ${{ matrix.image_name }}
+        run: ./.github/scripts/build-images-metadata.sh image-tags
+
+      - name: Compute build args
+        id: build-args
+        shell: bash
+        run: |
+          if [ "${{ matrix.image_name }}" = "frontend" ]; then
+            {
+              echo 'value<<EOF'
+              echo "VITE_COMMIT_SHA=${{ github.sha }}"
+              echo "VITE_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo 'value=' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build (and push on main when configured)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ steps.push-gate.outputs.enabled == 'true' }}
+          tags: ${{ steps.image-tags.outputs.tags }}
+          build-args: ${{ steps.build-args.outputs.value }}
+
+      - name: Write and upload image digest
+        if: steps.push-gate.outputs.enabled == 'true'
+        run: |
+          echo "${{ steps.build.outputs.digest }}" > /tmp/digest.txt
+        shell: bash
+
+      - name: Upload image digest artifact
+        if: steps.push-gate.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digest-${{ matrix.image_name }}
+          path: /tmp/digest.txt
+          retention-days: 7

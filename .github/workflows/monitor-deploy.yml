@@ -1,0 +1,74 @@
+name: Monitor - Deploy
+
+# Event-driven deploy-failure sentinel.
+#
+# The general `actions-monitor` polls `gh run list --limit 40`, and the deploy/E2E
+# workflows are LOW-FREQUENCY + `workflow_run`-triggered, so a busy Actions queue
+# (pipeline-fast, PR validation, build images, …) crowds them out of that window —
+# a deploy can fail repeatedly with NO incident raised ("silent deployment failure").
+#
+# This workflow fixes that structurally: it fires on the COMPLETION of the deploy /
+# dev-E2E workflows and, only when they FAILED, runs the `deploy-sentinel` agent
+# scoped to that exact run. Event-driven ⇒ it can never miss a deploy failure
+# regardless of queue volume. The agent reads the failed run's log, root-causes it,
+# and files/updates a deduplicated `priority:critical` incident.
+#
+# NOTE: `workflow_run` triggers only fire for the version of this file on the default
+# branch — it takes effect once merged to {{ default_branch }} (same as deploy-dev.yml).
+
+on:
+  workflow_run:
+    workflows: ["Deploy Dev", "E2E (dev environment)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "A failed Deploy Dev / E2E run id to investigate manually"
+        required: false
+
+concurrency:
+  group: monitor-deploy-${{ github.event.workflow_run.id || github.event.inputs.run_id || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  sentinel:
+    # Only act on FAILED deploy/E2E runs (or a manual dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: .github/tools/shared/package-lock.json
+
+      - name: Install shared runtime
+        run: npm ci
+        working-directory: .github/tools/shared
+
+      - name: Run Deploy Sentinel agent
+        working-directory: .github/tools/shared
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          FACTORY_CONFIG_PATH: ${{ github.workspace }}/.github/factory.yml
+          AGENTS_PATH: ${{ github.workspace }}/.github/agents
+          FAILED_RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.run_id }}
+          FAILED_WORKFLOW: ${{ github.event.workflow_run.name || 'manual dispatch' }}
+          FAILED_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: npx tsx src/run-agent.ts --agent deploy-sentinel

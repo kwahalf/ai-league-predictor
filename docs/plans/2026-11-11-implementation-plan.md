@@ -53,7 +53,7 @@ Goal: the template and spec on `main`, with PR validation passing and the stack 
 
 | # | PR | Size | Contents | Done when |
 |---|---|---|---|---|
-| 0.1 | Bring in the template | M | The Volaris template from branch `init/template-and-match-spec`, rebased onto `main`, with all its workflows kept (see Decisions). Make the Supabase project ID, every host port and the Docker Compose project name configurable per stack, so a **dev** and a **live** stack can run side by side on the runner without sharing containers, ports or volumes. Bind the Supabase ports to localhost. Set the spec's owner. Rewrite `README.md` for this project. | `pr-validation` and `architecture-audit` pass on the PR; dev and live stacks run side by side, and a `supabase db reset` in dev leaves a marker row in live untouched |
+| 0.1 | Bring in the template | M | The Volaris template from branch `init/template-and-match-spec`, rebased onto `main`, with all its workflows kept (see Decisions). Make the Supabase project ID, every host port and the Docker Compose project name configurable per stack, so a **dev** and a **live** stack can run side by side on the runner without sharing containers, ports or volumes. Add a runner script that blocks outside access to the Supabase ports (the Supabase CLI can't bind them to localhost). Set the spec's owner. Rewrite `README.md` for this project. | `pr-validation` and `architecture-audit` pass on the PR; dev and live stacks run side by side, and a `supabase db reset` in dev leaves a marker row in live untouched |
 | 0.2 | ADR-0001: football data gets its own tables | S | Records the decision in the spec's Data Model section, using `docs/adrs/TEMPLATE.md`. | ADR merged as Accepted |
 
 ## Milestone 1: Data foundation (spec phase 1)
@@ -62,7 +62,7 @@ Goal: 11 seasons of EPL results and odds in Postgres, refreshed daily, with chec
 
 | # | PR | Size | Contents | Done when |
 |---|---|---|---|---|
-| 1.1 | Football schema | M | Migration `…_football_core.sql`: `leagues`, `teams`, `matches`, `match_stats`, `bookmakers`, `odds`, plus RLS and indexes. Seed rows: EPL and the four odds sources (`B365`, `BW`, `AVG`, `PS`). | `supabase db reset` passes; audit's view checks pass |
+| 1.1 | Football schema | M | Migration `…_football_core.sql`: `leagues`, `teams`, `matches`, `match_stats`, `bookmakers`, `odds`, plus RLS and indexes. Seed rows: EPL and the four odds sources (`B365`, `BW`, `AVG`, `PS`). | `supabase db reset` passes; audit's view checks pass. First fix the template's view audit (`scripts/audit/check_view_security_invoker.py`): it treats `WITH (security_invoker = false)`, or a comment mentioning the option, as safe. It must parse the value, with regression tests for both cases (found by Copilot in PR 0.1) |
 | 1.2 | CSV parsing library | M | Pure Python, no I/O: parse a season file, map each season's odds columns (`BbAv` → `Avg`, pre-match vs closing) to the canonical shape, normalise team names through an alias table, convert kick-off times to UTC. Small fixture CSVs checked into `temporal/tests/fixtures/`, one pre-2019 and one post-2019. | Every team in all 11 real season files resolves; both fixture files parse to the expected rows |
 | 1.3 | `IngestWorkflow` | M | Activities: download, parse (from 1.2), upsert idempotently. Also stores the raw CSVs in Supabase Storage. Backfill command for 2016/17–2026/27. Temporal Schedule: daily 06:00 UTC, including `fixtures.csv`. Set up the **live stack** in a long-lived checkout on the runner, with its own project ID and ports, started at boot (see "Hosting on the runner"). | Backfill loads 10 × 380 matches plus the current season; a second run changes nothing |
 | 1.4 | Data-quality checks | S | A check activity run after every ingest: 380 matches per completed season, no duplicate fixtures, scores only on finished matches, odds > 1.0, margins between 0 and 15%. A failure fails the workflow visibly in the Temporal UI. | A deliberately corrupted fixture file trips each check |
@@ -92,10 +92,10 @@ Steps 3.1–3.3 and 3.4 can be built in parallel once 3.1's views exist.
 
 | # | PR | Size | Contents | Done when |
 |---|---|---|---|---|
-| 3.1 | Views and fixtures page | M | `v_upcoming_predictions`, `v_match_detail`, `v_model_performance` (with `security_invoker`); fixtures page as JSON forms under `frontend/forms/football/`. | Fixtures page shows the next 14 days with edge badges |
+| 3.1 | Views and fixtures page | M | `v_upcoming_predictions`, `v_match_detail`, `v_model_performance` (with `security_invoker`); fixtures page as JSON forms under `frontend/forms/football/`. Fix the template's layout engine first: `Grid` and `Stack` build Tailwind classes at runtime (`grid-cols-${n}`, `gap-${n}`), which Tailwind never generates, so numeric columns and gaps are lost; set them as inline styles (found by Copilot in PR 0.1). | Fixtures page shows the next 14 days with edge badges |
 | 3.2 | Match detail page | M | Probability bars (headline and fundamentals), scoreline heat map, goal markets, odds table, form, strengths, head-to-head. | All match-page acceptance criteria in the spec pass |
 | 3.3 | Performance page | M | RPS over time and calibration, for all layers and sources, filterable by season and model version. | Numbers match `v_model_performance` |
-| 3.4 | Agent tools and `match_analyst` | M | The six read-only tools in `temporal/src/agent/tools.py`; `temporal/agents/match_analyst.yaml` on `claude-sonnet-5-5`. | Config loads under `AGENT_PROVIDER=fake`; a real run explains a fixture citing only tool figures |
+| 3.4 | Agent tools and `match_analyst` | M | The six read-only tools in `temporal/src/agent/tools.py`; `temporal/agents/match_analyst.yaml` on `claude-sonnet-5-5`. Also fix or retire the template's example tools (found by Copilot in PR 0.1): `list_entity_types` reads one capped page (1,000 rows) and miscounts beyond it; `record_note` creates a duplicate note if its activity is retried, because it doesn't pass a stable `p_entity_id`. The new tools must not repeat either mistake. | Config loads under `AGENT_PROVIDER=fake`; a real run explains a fixture citing only tool figures |
 | 3.5 | "Explain this prediction" | S | Button on the match page that starts a `match_analyst` run for that match. | 20-explanation faithfulness spot check passes |
 
 ## Milestone 4: Extensions (spec phase 4)
@@ -265,6 +265,14 @@ If more parallelism is wanted later, agents can run as separate cloud Claude ses
 this runner, testing through CI. Then the limits are review time and the one-migration rule, not the
 runner.
 
+## Known template issues
+
+Found in review and not tied to a step, because this project doesn't use the code yet:
+
+- **Azure GPT `v1` style:** `temporal/src/agent/llm/azure_gpt.py` sends the dated default
+  `api-version` to the `/openai/v1` endpoint, which rejects dated versions. Fix before anyone sets
+  `AGENT_PROVIDER=azure_gpt` with `AZURE_OPENAI_API_STYLE=v1`. This project uses LiteLLM.
+
 ## Decisions
 
 - [x] **Owner:** @kwahalf (the spec's `Owner` field is updated in PR 0.1).
@@ -302,9 +310,10 @@ steps where they first matter:
   the repo outside the session directories.
 - **Start on reboot.** Add a systemd unit (or similar) that runs the stack at boot, in step 1.3, so
   the daily schedules survive a restart.
-- **Keep ports private.** The Supabase CLI listens on all network interfaces by default (API,
-  Postgres, Studio and others). Bind them to localhost in `supabase/config.toml` in PR 0.1, and reach
-  the app through an SSH tunnel.
+- **Keep ports private.** The Supabase CLI listens on all network interfaces (API, Postgres, Studio
+  and others) and has no setting to bind them to localhost. PR 0.1 adds
+  `scripts/runner/restrict-supabase-ports.sh`, which blocks outside access in Docker's firewall chain;
+  it's run at boot from step 1.3. Reach the app through an SSH tunnel.
 - **Back up the live database.** Daily `pg_dump` from step 2.7 on, plus one before every migration. From then on the stored predictions are
   the model's live track record and can't be recreated after the fact.
 - **The Temporal UI is on port 8081, not 8080,** because the runner's own process uses 8080
