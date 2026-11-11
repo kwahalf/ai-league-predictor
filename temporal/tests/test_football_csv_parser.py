@@ -285,6 +285,9 @@ def test_wrong_division_in_season_file_raises():
     [
         ("E0,2016-08-13,Burnley,Swansea,2.4,3.3,3.25", "Date"),
         ("E0,13/08/16,Burnley,Swansea,evens,3.3,3.25", "B365H"),
+        ("E0,13/08/16,Burnley,Swansea,nan,3.3,3.25", "B365H"),
+        ("E0,13/08/16,Burnley,Swansea,2.4,inf,3.25", "B365D"),
+        ("E0,13/08/16,Burnley,Swansea,2.4,3.3,3.5,3.25", "more values than header columns"),
     ],
 )
 def test_bad_values_raise_with_line_number(row, message):
@@ -296,3 +299,9 @@ def test_bad_values_raise_with_line_number(row, message):
 def test_invalid_season_rejected():
     with pytest.raises(ValueError, match="season"):
         parse_season_csv(_read("E0_1617_sample.csv"), "2016/17")
+
+
+def test_empty_surplus_fields_allowed():
+    text = "Div,Date,HomeTeam,AwayTeam,B365H,B365D,B365A\nE0,13/08/16,Burnley,Swansea,2.4,3.3,3.25,,\n"
+    (match,) = parse_season_csv(text, "1617")
+    assert match.odds_for("B365", "pre_match").away == 3.25

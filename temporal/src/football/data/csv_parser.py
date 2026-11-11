@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 from datetime import date, datetime, time, timezone
 from typing import Iterable, Mapping
@@ -91,6 +92,8 @@ def _parse(data: str | bytes, season: str, *, division: str, live: bool) -> list
         line_no = reader.line_num
         if _is_blank(row):
             continue
+        if any(str(v).strip() for v in row.get(None) or ()):  # type: ignore[call-overload]
+            raise CsvFormatError(f"line {line_no}: more values than header columns")
         row_division = (row.get("Div") or "").strip()
         if row_division != division:
             if live:
@@ -212,9 +215,13 @@ def _float(row: Mapping[str, str], column: str) -> float | None:
     if not text:
         return None
     try:
-        return float(text)
+        value = float(text)
     except ValueError:
         raise CsvFormatError(f"{column} must be a number, got {text!r}") from None
+    if not math.isfinite(value):
+        raise CsvFormatError(f"{column} must be a finite number, got {text!r}")
+    # Prices <= 1.0 are left for the data-quality checks (plan step 1.4) to flag.
+    return value
 
 
 def _parse_date(text: str) -> date:
