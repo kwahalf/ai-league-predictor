@@ -24,8 +24,11 @@ over the training matches (a sum, not a mean, so the penalty is a fixed prior th
 outweigh as they accumulate). The intercepts are not penalised. ``W₀`` (``prior_coefficients``)
 is a log-linear pool: ``W₀[k, log m_k] = market_weight``, ``W₀[k, log f_k] = fundamentals_weight``,
 everything else 0. With the defaults (market 1, fundamentals 0) the prior *is* the market
-consensus: an infinitely strong penalty, or no training data at all, gives back the consensus
-exactly, and the fit moves away from it only as far as the out-of-sample record supports. This is
+consensus: before any training (``BlendWeights.prior``, intercepts 0) the blend gives back the
+consensus exactly. Once fitted, the coefficients move away from ``W₀`` only as far as the
+out-of-sample record supports, but the unpenalised intercepts are always fitted, so even an
+infinitely strong penalty gives the consensus with a fitted base-rate shift (a constant tilt of
+the home/draw/away log-odds), not the consensus itself. This is
 an a-priori choice, not a result of tuning: betting markets are the strongest public forecasters
 of football results, and the headline's target is to at least match the consensus. Centring the
 penalty on zero instead would shrink towards a constant forecast (uniform up to the intercepts),
