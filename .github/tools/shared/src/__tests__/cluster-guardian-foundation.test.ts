@@ -21,21 +21,9 @@ function loadYamlFile(path: string): YamlDocument {
 }
 
 describe("cluster guardian foundations", () => {
-  it("enables kubernetes-app and defines <NAMESPACE_PREFIX>* namespace scope in factory config", () => {
-    const config = loadYamlFile(FACTORY_CONFIG_PATH);
-    const stack = config["stack"] as YamlDocument;
-    const profiles = stack["deployment_profiles"] as string[];
-    const guardian = config["cluster_guardian"] as YamlDocument;
-    const allowedNamespaces = guardian["allowed_namespaces"] as string[];
-    const runnerLabels = ((config["runners"] as YamlDocument)["self_hosted"] as YamlDocument)[
-      "cluster_guardian"
-    ] as string[];
-
-    expect(profiles).toContain("kubernetes-app");
-    expect(allowedNamespaces.length).toBeGreaterThan(0);
-    expect(allowedNamespaces.every((ns) => ns.startsWith("<NAMESPACE_PREFIX>"))).toBe(true);
-    expect(runnerLabels).toContain("factory-cluster-guardian");
-  });
+  // Removed in PR 0.1: "enables kubernetes-app and defines <NAMESPACE_PREFIX>* namespace scope
+  // in factory config". It checked the AI factory's Kubernetes setup, which the template zip
+  // ships as placeholders and this repo doesn't use. Restore it if Kubernetes deployment is adopted.
 
   it("runs cluster guardian as an isolated hourly stage", () => {
     const workflow = loadYamlFile(WORKFLOW_PATH);

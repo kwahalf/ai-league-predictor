@@ -43,7 +43,5 @@ jobs:
         # individual checks to `--strict` once their tracking issues close.
         run: python scripts/audit/run_audits.py
 
-      - name: Verify audit tooling (unit tests)
-        run: |
-          pip install pytest >/dev/null
-          python -m pytest temporal/tests/test_architecture_audit.py -q -p no:cacheprovider
+      # The template's "Verify audit tooling (unit tests)" step was removed in PR 0.1: it ran
+      # temporal/tests/test_architecture_audit.py, which the template zip didn't include.

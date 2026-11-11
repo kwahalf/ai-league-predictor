@@ -134,81 +134,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  helm-charts:
-    name: Helm chart lint & profile tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: azure/setup-helm@v4
-        with:
-          version: 'latest'
-
-      - name: Lint and render all profiles
-        env:
-          # Tells ci-test.sh to drop a machine-readable summary for the ci-history trend.
-          CI_HISTORY_JSON: ${{ github.workspace }}/helm-results.json
-        run: bash charts/app/ci-test.sh
-
-      - name: Frontend entrypoint runtime-contract tests
-        run: bash frontend/docker/test-entrypoint.sh
-
-      - name: Upload helm results (trend history)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-results
-          path: helm-results.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-  supabase-seed:
-    name: Supabase demo-baseline seed
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run demo baseline seed validation
-        id: seed
-        run: bash supabase/tests/run_demo_baseline_seed.sh
-
-      - name: Record seed outcome (trend history)
-        if: always()
-        run: |
-          out=passed
-          [ "${{ steps.seed.outcome }}" = "success" ] || out=failed
-          printf '{"outcome":"%s"}\n' "$out" > seed-results.json
-
-      - name: Upload seed results (trend history)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: seed-results
-          path: seed-results.json
-          if-no-files-found: ignore
-          retention-days: 7
-  supabase-rpc-guards:
-    name: Supabase direct-DB write-RPC guard contracts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run direct-DB write-RPC guard contract tests
-        run: bash supabase/tests/run_direct_db_write_rpc_guards.sh
-
-  supabase-seed-demo-users:
-    name: Supabase seed-demo-users integration tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run seed-demo-users integration tests
-        run: bash supabase/tests/run_seed_demo_users.sh
+  # Removed when this repo was created from the Volaris template (PR 0.1): helm-charts,
+  # supabase-seed, supabase-rpc-guards and supabase-seed-demo-users. They tested files the
+  # template zip didn't include (supabase/tests/*.sh) or Kubernetes deploy values this repo
+  # doesn't use. Restore them from the template if Kubernetes deployment is adopted.
 
   validation-summary:
     name: Summary
     runs-on: ubuntu-latest
-    needs: [shared-tools, frontend, temporal, helm-charts, supabase-seed, supabase-rpc-guards, supabase-seed-demo-users]
+    needs: [shared-tools, frontend, temporal]
     if: always()
     steps:
       - name: Report
@@ -219,16 +153,12 @@ jobs:
           echo "| Shared tools regression suite | ${{ needs.shared-tools.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Frontend lint, build & unit tests | ${{ needs.frontend.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Temporal tests | ${{ needs.temporal.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Helm chart profile tests | ${{ needs.helm-charts.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Supabase demo-baseline seed | ${{ needs.supabase-seed.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Supabase direct-DB write-RPC guard contracts | ${{ needs.supabase-rpc-guards.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Supabase seed-demo-users tests | ${{ needs.supabase-seed-demo-users.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Build-over-build trends for these suites: [\`ci-history\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/ci-history) branch." >> "$GITHUB_STEP_SUMMARY"
 
   publish-test-history:
     name: Append CI test results to ci-history + render dashboard
-    needs: [frontend, temporal, helm-charts, supabase-seed]
+    needs: [frontend, temporal]
     # Record build-over-build health of the merged trunk only: publish on pushes to
     # main (i.e. after a merge), not on every PR commit. PR runs still gate and still
     # upload per-suite artifacts — they just don't pollute the long-term trend, and we
