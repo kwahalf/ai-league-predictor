@@ -65,6 +65,66 @@ Steps 3.1–3.3 and 3.4 can be built in parallel once 3.1's views exist.
 | 3.4 | Agent tools and `match_analyst` | M | The six read-only tools in `temporal/src/agent/tools.py`; `temporal/agents/match_analyst.yaml` on `claude-sonnet-5-5`. | Config loads under `AGENT_PROVIDER=fake`; a real run explains a fixture citing only tool figures |
 | 3.5 | "Explain this prediction" | S | Button on the match page that starts a `match_analyst` run for that match. | 20-explanation faithfulness spot check passes |
 
+## Milestone 4: Extensions (spec phase 4)
+
+Goal: make the predictor broader and sharper, but only where the live track record says it's worth it.
+Milestone 4 is three independent tracks. Each starts with its own go/no-go decision and can be
+dropped without affecting the others.
+
+**Entry gate:** milestone 3 shipped, and at least 10 live gameweeks scored, so that changes are judged
+against a real track record, not just the backtest. Every model change in this milestone goes through
+the promotion rule from step 2.6: it replaces the current version only if it beats it.
+
+### Track A: Second league
+
+The free data already covers it. Checked on 2026-11-11: the Championship (`E1`) and La Liga (`SP1`),
+among others, have Bet365, Bwin and market-average odds in all 11 seasons and in `fixtures.csv`, in the
+same format as the EPL.
+
+| # | PR | Size | Contents | Done when |
+|---|---|---|---|---|
+| 4.A1 | Second league data | M | League row and team aliases; ingest and quality checks parameterised by league; backfill 2016/17–2026/27. | All 11 seasons load and pass the quality checks |
+| 4.A2 | Per-league models and backtest | M | Fit Elo, Dixon–Coles and the blend per league; backtest the new league with the same harness and leakage tests. | Backtest meets the same success criteria as the EPL, or the gap is understood and recorded |
+| 4.A3 | League in the pages and agent | S | League switch on the fixtures and performance pages; agent tools take a league. | Both leagues browsable; the agent answers for either |
+
+**Go/no-go:** which league, and whether its backtest is good enough to show. The Championship is the
+natural next step (promoted teams in the EPL arrive with Championship history, which also helps
+the EPL model's ratings for promoted teams).
+
+### Track B: Team news (paid feed)
+
+The only part of phase 4 that needs paid data. Lineups and injuries aren't in the free CSVs.
+
+| # | PR | Size | Contents | Done when |
+|---|---|---|---|---|
+| 4.B1 | Provider evaluation and ADR | S | Compare 2–3 providers (for example API-Football, Sportmonks) on EPL coverage, how far back lineups and injuries go, update timing before kick-off, cost, and licence terms. Note whether the feed also carries live Pinnacle odds, which would restore a live sharp benchmark (spec open question). | ADR accepted naming a provider and a monthly budget, or rejecting all of them |
+| 4.B2 | Team-news ingest | M | New tables for lineups, injuries and suspensions, matched to `matches` and `teams`; scheduled pulls on match days. API key in `.env`, never committed. | A full gameweek's team news is stored and matched to fixtures |
+| 4.B3 | `get_team_news` agent tool | S | Read-only tool, so the agent can talk about absences, citing the feed. The "doesn't know" rule stays for anything the feed doesn't cover. | The agent mentions a confirmed absence only when the tool returned it |
+| 4.B4 | Team news as a model input | M | Add availability features (for example share of usual starters missing) to the fundamentals model. | Beats the current version under the promotion rule |
+
+**Go/no-go:** 4.B1 decides whether this track happens at all. 4.B4 also needs enough **history** of team
+news to backtest. If the provider's history is thin, collect it live for a season first and run 4.B4
+afterwards. Expect a small gain: the odds already price most team news in.
+
+### Track C: Richer fundamentals
+
+Uses data we already ingest. Shots (`HS`, `AS`) and shots on target (`HST`, `AST`) are in every
+season file.
+
+| # | PR | Size | Contents | Done when |
+|---|---|---|---|---|
+| 4.C1 | Shots-informed ratings | M | Add shots on target as a second signal in the fundamentals model: it's less noisy than goals, so ratings settle faster early in a season. | Fundamentals RPS improves in the backtest, especially in the first 10 gameweeks |
+| 4.C2 | Gradient-boosting challenger | L | A boosted model over rating differences, form, rest days and market odds, trained walk-forward with the same leakage tests. | Beats the current headline model under the promotion rule, or is recorded as a negative result |
+
+**Go/no-go:** each is promoted only if it wins. A losing challenger is still worth recording in
+`model_versions`, so nobody repeats the experiment blind. True expected-goals models need shot
+locations, which aren't in the free data. They'd come from the Track B provider, if it offers them.
+
+### Decisions needed for milestone 4
+
+- [ ] Which second league (Track A).
+- [ ] Monthly budget for a team-news feed, if any (Track B).
+
 ## Dependencies between steps
 
 ```
@@ -74,9 +134,14 @@ Steps 3.1–3.3 and 3.4 can be built in parallel once 3.1's views exist.
                                                                    └─ 3.1 ─┬─ 3.2 ─ 3.5
                                                                            ├─ 3.3
                                                                            └─ 3.4 ─ 3.5
+
+[milestone 3 shipped + 10 live gameweeks] ─┬─ Track A: 4.A1 ─ 4.A2 ─ 4.A3
+                                           ├─ Track B: 4.B1 ─ 4.B2 ─ 4.B3
+                                           │                      └─ [a season of team-news history] ─ 4.B4
+                                           └─ Track C: 4.C1 ─ 4.C2
 ```
 
-UI work can start right after 2.7, while the 4-gameweek silent run is still going. The checkpoint gates **trusting** the numbers, not building the screens.
+UI work can start right after 2.7, while the 4-gameweek silent run is still going. The checkpoint gates **trusting** the numbers, not building the screens. The three milestone 4 tracks are independent of each other.
 
 ## Decisions
 
@@ -109,6 +174,3 @@ steps where they first matter:
 - **The Temporal UI is on port 8081, not 8080,** because the runner's own process uses 8080
   (`TEMPORAL_UI_PORT=8081 make up`).
 
-## Not in this plan
-
-Phase 4 from the spec (second league, paid team-news API, richer models) gets its own plan once milestone 3 has shipped and the live track record shows whether the model is worth extending.
