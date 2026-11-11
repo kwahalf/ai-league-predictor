@@ -98,7 +98,7 @@ class RawCsvRef:
 
 @dataclass
 class LoadResult:
-    """What loading one file did. On a re-run of unchanged data every ``*_inserted``/``*_updated`` is 0."""
+    """What loading one file did. On a re-run of unchanged data every ``*_inserted``/``*_updated``/``*_deleted`` is 0."""
 
     kind: str
     season: str
@@ -112,6 +112,11 @@ class LoadResult:
     stats_updated: int = 0
     odds_inserted: int = 0
     odds_updated: int = 0
+    # Stored quotes the file no longer has (absent, or nothing left after cleaning).
+    odds_deleted: int = 0
+    # 1 if the load was skipped because a newer download of the same file was already loaded
+    # (overlapping manual and scheduled runs).
+    stale_skipped: int = 0
     # fixtures.csv rows left alone: the match already has a result, or kick-off has passed.
     fixtures_skipped: int = 0
     # Prices <= 1.0 stored as missing (owner decision 2026-11-11), and the 1X2 or over/under sets

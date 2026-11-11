@@ -127,6 +127,11 @@ def load_csv(gateway: Gateway, ref: RawCsvRef) -> LoadResult:
         price_sets_nulled=payload.price_sets_nulled,
         **{k: int(v) for k, v in counts.items() if k in known and k not in _LOCAL_COUNTS},
     )
+    if result.stale_skipped:
+        _log(
+            f"football ingest skipped stale download file={ref.url} downloaded_at={ref.downloaded_at}: "
+            "a newer download of this file was already loaded"
+        )
     if result.prices_dropped or result.price_sets_nulled:
         _log(
             f"football ingest dropped prices<=1.0 file={ref.url} storage_path={ref.storage_path} "

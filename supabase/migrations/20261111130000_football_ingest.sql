@@ -14,6 +14,20 @@ insert into storage.buckets (id, name, public)
 values ('football-raw', 'football-raw', false)
 on conflict (id) do nothing;
 
+-- The latest download loaded per source file ('E0/2324', 'fixtures.csv'). Manual and scheduled
+-- runs can overlap; a load whose download is older than the last one loaded for the same file is
+-- skipped, so an older file can never overwrite newer prices or results. Bookkeeping only: it moves
+-- on every run, unlike the data tables.
+create table if not exists football_ingest_state (
+  division text not null,
+  source_key text not null check (btrim(source_key) <> ''),
+  last_captured_at timestamptz not null,
+  primary key (division, source_key)
+);
+alter table football_ingest_state enable row level security;
+revoke all on football_ingest_state from anon, authenticated;
+grant all on football_ingest_state to service_role;
+
 -- Upsert one file's teams, matches, match stats and odds.
 --
 --   p_division     league code, e.g. 'E0' (must exist in leagues)
@@ -33,11 +47,16 @@ on conflict (id) do nothing;
 --     that later appears with a result becomes 'finished' on the same row.
 --   * Live odds from fixtures.csv are stored only for matches still scheduled and not yet kicked
 --     off at p_captured_at, so a live price is never captured after kick-off.
+--   * The file is the truth for the odds of each match it covers: a stored quote of the file's
+--     snapshots (pre_match/closing for a season file, live for fixtures.csv) that the file no longer
+--     has (absent, or nothing left after cleaning) is deleted.
 --   * Every update has a WHERE ... IS DISTINCT FROM ... guard: unchanged rows aren't written, so
 --     their updated_at (set by the update_updated_at trigger) doesn't move. odds.captured_at moves
 --     only when a price changes.
+--   * Loads are serialised per league (advisory lock), and a download older than the last one
+--     loaded for the same file is skipped (football_ingest_state), returning stale_skipped = 1.
 --
--- Returns counts of rows inserted and updated per table, and fixtures_skipped.
+-- Returns counts of rows inserted, updated and deleted per table, fixtures_skipped and stale_skipped.
 create or replace function public.football_ingest_matches(
   p_division text,
   p_kind text,
@@ -61,8 +80,10 @@ declare
   v_stats_updated int := 0;
   v_odds_inserted int := 0;
   v_odds_updated int := 0;
+  v_odds_deleted int := 0;
   v_fixtures_skipped int := 0;
   v_problem text;
+  v_last_captured_at timestamptz;
 begin
   if p_kind is null or p_kind not in ('season', 'fixtures') then
     raise exception using errcode = '22023', message = format('p_kind must be season or fixtures, got %L', p_kind);
@@ -79,6 +100,23 @@ begin
   if v_league is null then
     raise exception using errcode = '22023', message = format('unknown league %L', p_division);
   end if;
+  if p_source_key is null or btrim(p_source_key) = '' then
+    raise exception using errcode = '22023', message = 'p_source_key is required';
+  end if;
+
+  -- One load per league at a time; then refuse a download older than the last one loaded.
+  perform pg_advisory_xact_lock(hashtext('football_ingest_matches'), hashtext(p_division));
+  select last_captured_at into v_last_captured_at
+  from football_ingest_state
+  where division = p_division and source_key = p_source_key;
+  if v_last_captured_at is not null and p_captured_at < v_last_captured_at then
+    return jsonb_build_object('stale_skipped', 1);
+  end if;
+  insert into football_ingest_state as st (division, source_key, last_captured_at)
+  values (p_division, p_source_key, p_captured_at)
+  on conflict (division, source_key) do update
+    set last_captured_at = excluded.last_captured_at
+    where st.last_captured_at < excluded.last_captured_at;
 
   -- Teams.
   with incoming as (
@@ -222,6 +260,29 @@ begin
     where mt.status <> 'scheduled' or mt.kickoff_at <= p_captured_at;
   end if;
 
+  -- Quotes the file no longer has, for the matches whose odds it covers.
+  with covered as (
+    select mt.id as match_id, coalesce(m.odds, '[]'::jsonb) as odds
+    from jsonb_to_recordset(p_matches) as m(season text, home_team text, away_team text, odds jsonb)
+    join teams th on th.league_id = v_league and th.name = m.home_team
+    join teams ta on ta.league_id = v_league and ta.name = m.away_team
+    join matches mt on mt.league_id = v_league and mt.season = m.season
+                   and mt.home_team_id = th.id and mt.away_team_id = ta.id
+    where not v_fixtures or (mt.status = 'scheduled' and mt.kickoff_at > p_captured_at)
+  ), gone as (
+    delete from odds od
+    using covered c
+    where od.match_id = c.match_id
+      and od.snapshot = any (case when v_fixtures then array['live'] else array['pre_match', 'closing'] end)
+      and not exists (
+        select 1
+        from jsonb_to_recordset(c.odds) as o(source text, snapshot text)
+        join bookmakers b on b.code = o.source
+        where b.id = od.bookmaker_id and o.snapshot = od.snapshot)
+    returning 1
+  )
+  select count(*) into v_odds_deleted from gone;
+
   with incoming as (
     select mt.id as match_id, b.id as bookmaker_id, o.snapshot,
            o.home, o.draw, o.away, o.over_2_5, o.under_2_5
@@ -266,7 +327,9 @@ begin
     'stats_updated', v_stats_updated,
     'odds_inserted', v_odds_inserted,
     'odds_updated', v_odds_updated,
-    'fixtures_skipped', v_fixtures_skipped
+    'odds_deleted', v_odds_deleted,
+    'fixtures_skipped', v_fixtures_skipped,
+    'stale_skipped', 0
   );
 end;
 $$;

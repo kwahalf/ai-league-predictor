@@ -7,8 +7,9 @@
 [Unit]
 Description=AI League Predictor: live stack (Supabase, Temporal, worker, frontend)
 After=docker.service network-online.target ai-league-predictor-firewall.service
-Wants=network-online.target ai-league-predictor-firewall.service
-Requires=docker.service
+Wants=network-online.target
+# Fail closed: if the firewall rules can't be applied, don't publish the Supabase ports.
+Requires=docker.service ai-league-predictor-firewall.service
 
 [Service]
 Type=oneshot

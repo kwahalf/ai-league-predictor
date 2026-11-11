@@ -115,12 +115,18 @@ The scheduled run can also be started by hand from the Temporal UI: Schedules,
 What a run does, per file: download from football-data.co.uk, store the raw bytes in the
 `football-raw` bucket (named by SHA-256, so an unchanged file stores nothing new), parse, then one
 database call that writes only rows whose values changed. Running it again on unchanged files writes
-nothing: row counts and every `updated_at` stay the same.
+nothing to the data tables: row counts and every `updated_at` stay the same (only the bookkeeping
+row in `football_ingest_state` records the newer download time).
 
 - Season files go first, then `fixtures.csv`, so a match that has a result never turns back into a
   fixture. A fixture that later appears with a result becomes `finished` on the same row.
 - Live odds (`snapshot = 'live'`) are stored only for matches that are still scheduled and haven't
   kicked off at download time. `captured_at` is the download time, and moves only when a price changes.
+- The file is the truth for the odds of the matches it covers: a stored quote the file no longer has
+  (absent, or nothing left after cleaning) is deleted (`odds_deleted`).
+- Overlapping runs (a manual backfill during the scheduled run) are safe: loads are serialised per
+  league, and a download older than the last one loaded for the same file is skipped
+  (`stale_skipped`, recorded in `football_ingest_state`), so older prices never overwrite newer ones.
 - Matches before 2019/20 have no kick-off time in the source; they're stored at 00:00 UTC on the
   match date.
 - **Prices of 1.0 or less are stored as missing** (owner decision, 2026-11-11), and if that leaves a

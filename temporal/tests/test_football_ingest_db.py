@@ -2,8 +2,10 @@
 
 Opt-in, because it writes: set ``FOOTBALL_INGEST_DB_TESTS=1`` and point ``SUPABASE_URL`` /
 ``SUPABASE_SERVICE_ROLE_KEY`` at the **dev** stack. It only touches season ``9900`` (1999/00 is
-outside the data, and the code wraps to 2099/00 for the kick-offs used here), and deletes it before
-and after. CI doesn't run it (no database there).
+outside the data, and the code wraps to 2099/00 for the kick-offs used here) and its ingest-state
+rows, and deletes them before and after. It makes sure Arsenal and Chelsea exist first, so it
+works on a freshly reset database as well as after a backfill. CI doesn't run it (no database
+there).
 
     docker compose run --rm -e FOOTBALL_INGEST_DB_TESTS=1 -v "$PWD/temporal:/app" \
       --entrypoint python temporal-worker -m pytest tests/test_football_ingest_db.py -q
@@ -48,12 +50,22 @@ def _rest(path: str, method: str = "GET"):
 
 def _cleanup() -> None:
     _rest(f"matches?season=eq.{SEASON}", method="DELETE")
+    for key in (f"E0/{SEASON}", f"test-fixtures-{SEASON}"):
+        _rest(f"football_ingest_state?division=eq.E0&source_key=eq.{key}", method="DELETE")
 
 
 @pytest.fixture
 def gateway():
     _cleanup()
-    yield HttpGateway(settings.supabase_url, settings.supabase_service_role_key)
+    gw = HttpGateway(settings.supabase_url, settings.supabase_service_role_key)
+    # Make sure the two teams exist (with their aliases), so the counts below only see this test.
+    teams = build_payload([_fixture(2.0)], include_stats=False).teams
+    gw.rpc(
+        "football_ingest_matches",
+        {"p_division": "E0", "p_kind": "season", "p_source_key": f"E0/{SEASON}",
+         "p_captured_at": "2000-01-01T00:00:00+00:00", "p_teams": teams, "p_matches": []},
+    )
+    yield gw
     _cleanup()
 
 
@@ -64,7 +76,7 @@ def _ingest(gateway: HttpGateway, kind: str, record: MatchRecord, captured_at: d
         {
             "p_division": "E0",
             "p_kind": kind,
-            "p_source_key": "fixtures.csv" if kind == "fixtures" else f"E0/{SEASON}",
+            "p_source_key": f"test-fixtures-{SEASON}" if kind == "fixtures" else f"E0/{SEASON}",
             "p_captured_at": captured_at.isoformat(),
             "p_teams": payload.teams,
             "p_matches": payload.matches,
@@ -87,7 +99,7 @@ def _row() -> dict:
 
 
 def _changes(counts: dict) -> dict:
-    return {k: v for k, v in counts.items() if v and k != "fixtures_skipped"}
+    return {k: v for k, v in counts.items() if v and k not in ("fixtures_skipped", "stale_skipped")}
 
 
 def test_fixture_then_result_is_one_row_and_reruns_change_nothing(gateway):
@@ -142,6 +154,31 @@ def test_live_odds_are_not_captured_after_kickoff(gateway):
     assert _rest(f"odds?match_id=eq.{_row()['id']}&select=id") == []
 
 
+def test_a_quote_the_file_no_longer_has_is_deleted(gateway):
+    t0 = datetime(2099, 8, 18, 6, 0, tzinfo=timezone.utc)
+    assert _changes(_ingest(gateway, "fixtures", _fixture(2.0), t0)) == {"matches_inserted": 1, "odds_inserted": 1}
+    # Next download: every Bet365 price is <= 1.0, so nothing is left of the quote after cleaning.
+    gone = MatchRecord(
+        season=SEASON, match_date=KICKOFF.date(), kickoff_at=KICKOFF, home_team="Arsenal",
+        away_team="Chelsea", odds=(OddsQuote("B365", "live", 1.0, 0.0, 0.0, 0.0, 0.0),),
+    )
+    later = datetime(2099, 8, 19, 6, 0, tzinfo=timezone.utc)
+    assert _changes(_ingest(gateway, "fixtures", gone, later)) == {"odds_deleted": 1}
+    assert _rest(f"odds?match_id=eq.{_row()['id']}&select=id") == []
+    assert _changes(_ingest(gateway, "fixtures", gone, later)) == {}
+
+
+def test_an_older_download_never_overwrites_a_newer_one(gateway):
+    older, newer = (datetime(2099, 8, 18, h, 0, tzinfo=timezone.utc) for h in (6, 7))
+    _ingest(gateway, "fixtures", _fixture(2.0), newer)
+    # A slower, overlapping run that downloaded earlier loads afterwards: skipped.
+    stale = _ingest(gateway, "fixtures", _fixture(9.0), older)
+    assert stale == {"stale_skipped": 1}
+    assert _rest(f"odds?match_id=eq.{_row()['id']}&select=home") == [{"home": 2.0}]
+    # Retrying the same download (same time) is allowed and changes nothing.
+    assert _changes(_ingest(gateway, "fixtures", _fixture(2.0), newer)) == {}
+
+
 def test_unknown_odds_source_fails_loudly(gateway):
     payload = build_payload([_fixture(2.0)], include_stats=False)
     payload.matches[0]["odds"][0]["source"] = "XX"
@@ -149,7 +186,7 @@ def test_unknown_odds_source_fails_loudly(gateway):
         gateway.rpc(
             "football_ingest_matches",
             {
-                "p_division": "E0", "p_kind": "fixtures", "p_source_key": "fixtures.csv",
+                "p_division": "E0", "p_kind": "fixtures", "p_source_key": f"test-fixtures-{SEASON}",
                 "p_captured_at": date(2099, 8, 1).isoformat(),
                 "p_teams": payload.teams, "p_matches": payload.matches,
             },

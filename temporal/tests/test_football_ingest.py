@@ -392,3 +392,11 @@ async def test_ensure_schedule_creates_once_then_updates_in_place():
     assert await cli.ensure_schedule(client, "main") == "updated"
     assert client.existing == {"football-ingest-daily"}
     assert [c[0] for c in client.calls] == ["create", "handle", "update"]
+
+
+def test_load_reports_a_stale_download_skipped_by_the_database():
+    gateway = FakeGateway(rpc_result={"stale_skipped": 1})
+    ref = _fetched(gateway, "E0_2324_sample.csv", CsvSource("season", "2324"))
+    result = load_csv(gateway, ref)
+    assert result.stale_skipped == 1
+    assert result.matches_inserted == 0
