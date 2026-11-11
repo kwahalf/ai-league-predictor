@@ -15,6 +15,7 @@ from .workflows.agent.agent_workflow import AgentWorkflow
 from .workflows.example.approval_workflow import ApprovalWorkflow
 from .football.ingest.activities import build_activities as build_football_ingest_activities
 from .football.ingest.workflow import IngestWorkflow
+from .football.quality.activities import build_activities as build_football_quality_activities
 from .football.scoring.activities import build_activities as build_football_scoring_activities
 from .football.scoring.workflow import MarketScoreWorkflow
 
@@ -44,6 +45,8 @@ async def main() -> None:
             *build_agent_activities(),
             # Football ingest (plan step 1.3): download + store raw CSV, parse + upsert.
             *build_football_ingest_activities(),
+            # Football data-quality checks (plan step 1.4): IngestWorkflow's last step.
+            *build_football_quality_activities(),
             # Football market scores (plan step 2.1b): score the bookmakers per season.
             *build_football_scoring_activities(),
         ],

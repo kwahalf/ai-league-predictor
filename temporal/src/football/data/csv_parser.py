@@ -240,7 +240,8 @@ def _float(row: Mapping[str, str], column: str) -> float | None:
         raise CsvFormatError(f"{column} must be a number, got {text!r}") from None
     if not math.isfinite(value):
         raise CsvFormatError(f"{column} must be a finite number, got {text!r}")
-    # Prices <= 1.0 are left for the data-quality checks (plan step 1.4) to flag.
+    # Prices <= 1.0 are returned as they are: the ingest (1.3, payload.py) stores them as missing,
+    # and the data-quality check (1.4) confirms none reached the database.
     return value
 
 

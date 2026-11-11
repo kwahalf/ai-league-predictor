@@ -1,0 +1,380 @@
+Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,FTR,B365H,B365D,B365A,B365>2.5,B365<2.5
+E0,07/08/1999,Arsenal,Wolves,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,West Ham,Aston Villa,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Bournemouth,Watford,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Tottenham,Chelsea,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Coventry,Sunderland,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Southampton,Crystal Palace,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Everton,Sheffield United,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Newcastle,Leeds,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Leicester,Middlesbrough,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,07/08/1999,Man United,Liverpool,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,West Ham,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Wolves,Watford,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Tottenham,Aston Villa,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Bournemouth,Sunderland,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Southampton,Chelsea,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Coventry,Sheffield United,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Newcastle,Crystal Palace,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Everton,Middlesbrough,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Man United,Leeds,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,14/08/1999,Leicester,Liverpool,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Arsenal,Watford,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Tottenham,West Ham,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Wolves,Sunderland,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Southampton,Aston Villa,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Bournemouth,Sheffield United,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Newcastle,Chelsea,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Coventry,Middlesbrough,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Man United,Crystal Palace,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Everton,Liverpool,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,21/08/1999,Leicester,Leeds,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Tottenham,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Watford,Sunderland,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Southampton,West Ham,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Wolves,Sheffield United,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Newcastle,Aston Villa,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Bournemouth,Middlesbrough,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Man United,Chelsea,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Coventry,Liverpool,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Leicester,Crystal Palace,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,28/08/1999,Everton,Leeds,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Arsenal,Sunderland,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Southampton,Tottenham,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Watford,Sheffield United,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Newcastle,West Ham,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Wolves,Middlesbrough,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Man United,Aston Villa,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Bournemouth,Liverpool,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Leicester,Chelsea,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Coventry,Leeds,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,04/09/1999,Everton,Crystal Palace,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Southampton,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Sunderland,Sheffield United,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Newcastle,Tottenham,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Watford,Middlesbrough,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Man United,West Ham,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Wolves,Liverpool,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Leicester,Aston Villa,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Bournemouth,Leeds,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Everton,Chelsea,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,11/09/1999,Coventry,Crystal Palace,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Arsenal,Sheffield United,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Newcastle,Southampton,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Sunderland,Middlesbrough,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Man United,Tottenham,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Watford,Liverpool,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Leicester,West Ham,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Wolves,Leeds,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Everton,Aston Villa,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Bournemouth,Crystal Palace,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,18/09/1999,Coventry,Chelsea,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Newcastle,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Sheffield United,Middlesbrough,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Man United,Southampton,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Sunderland,Liverpool,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Leicester,Tottenham,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Watford,Leeds,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Everton,West Ham,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Wolves,Crystal Palace,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Coventry,Aston Villa,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,25/09/1999,Bournemouth,Chelsea,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Arsenal,Middlesbrough,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Man United,Newcastle,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Sheffield United,Liverpool,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Leicester,Southampton,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Sunderland,Leeds,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Everton,Tottenham,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Watford,Crystal Palace,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Coventry,West Ham,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Wolves,Chelsea,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,02/10/1999,Bournemouth,Aston Villa,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Man United,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Middlesbrough,Liverpool,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Leicester,Newcastle,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Sheffield United,Leeds,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Everton,Southampton,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Sunderland,Crystal Palace,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Coventry,Tottenham,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Watford,Chelsea,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Bournemouth,West Ham,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,09/10/1999,Wolves,Aston Villa,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Leicester,Man United,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Middlesbrough,Leeds,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Everton,Newcastle,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Sheffield United,Crystal Palace,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Coventry,Southampton,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Sunderland,Chelsea,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Bournemouth,Tottenham,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Watford,Aston Villa,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,16/10/1999,Wolves,West Ham,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Leicester,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Liverpool,Leeds,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Everton,Man United,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Middlesbrough,Crystal Palace,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Coventry,Newcastle,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Sheffield United,Chelsea,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Bournemouth,Southampton,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Sunderland,Aston Villa,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Wolves,Tottenham,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,23/10/1999,Watford,West Ham,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Arsenal,Leeds,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Everton,Leicester,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Liverpool,Crystal Palace,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Coventry,Man United,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Middlesbrough,Chelsea,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Bournemouth,Newcastle,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Sheffield United,Aston Villa,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Wolves,Southampton,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Sunderland,West Ham,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,30/10/1999,Watford,Tottenham,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Everton,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Leeds,Crystal Palace,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Coventry,Leicester,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Liverpool,Chelsea,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Bournemouth,Man United,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Middlesbrough,Aston Villa,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Wolves,Newcastle,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Sheffield United,West Ham,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Watford,Southampton,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,06/11/1999,Sunderland,Tottenham,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Arsenal,Crystal Palace,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Coventry,Everton,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Leeds,Chelsea,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Bournemouth,Leicester,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Liverpool,Aston Villa,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Wolves,Man United,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Middlesbrough,West Ham,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Watford,Newcastle,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Sheffield United,Tottenham,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,13/11/1999,Sunderland,Southampton,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Coventry,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Crystal Palace,Chelsea,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Bournemouth,Everton,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Leeds,Aston Villa,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Wolves,Leicester,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Liverpool,West Ham,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Watford,Man United,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Middlesbrough,Tottenham,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Sunderland,Newcastle,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,20/11/1999,Sheffield United,Southampton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Arsenal,Chelsea,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Bournemouth,Coventry,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Crystal Palace,Aston Villa,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Wolves,Everton,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Leeds,West Ham,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Watford,Leicester,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Liverpool,Tottenham,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Sunderland,Man United,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Middlesbrough,Southampton,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,27/11/1999,Sheffield United,Newcastle,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Bournemouth,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Chelsea,Aston Villa,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Wolves,Coventry,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Crystal Palace,West Ham,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Watford,Everton,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Leeds,Tottenham,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Sunderland,Leicester,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Liverpool,Southampton,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Sheffield United,Man United,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,04/12/1999,Middlesbrough,Newcastle,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Arsenal,Aston Villa,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Wolves,Bournemouth,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Chelsea,West Ham,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Watford,Coventry,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Crystal Palace,Tottenham,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Sunderland,Everton,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Leeds,Southampton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Sheffield United,Leicester,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Liverpool,Newcastle,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,11/12/1999,Middlesbrough,Man United,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Wolves,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Aston Villa,West Ham,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Watford,Bournemouth,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Chelsea,Tottenham,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Sunderland,Coventry,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Crystal Palace,Southampton,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Sheffield United,Everton,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Leeds,Newcastle,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Middlesbrough,Leicester,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,18/12/1999,Liverpool,Man United,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Arsenal,West Ham,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Watford,Wolves,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Aston Villa,Tottenham,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Sunderland,Bournemouth,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Chelsea,Southampton,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Sheffield United,Coventry,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Crystal Palace,Newcastle,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Middlesbrough,Everton,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Leeds,Man United,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,25/12/1999,Liverpool,Leicester,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Watford,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,West Ham,Tottenham,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Sunderland,Wolves,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Aston Villa,Southampton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Sheffield United,Bournemouth,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Chelsea,Newcastle,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Middlesbrough,Coventry,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Crystal Palace,Man United,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Liverpool,Everton,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,01/01/2000,Leeds,Leicester,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Arsenal,Tottenham,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Sunderland,Watford,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,West Ham,Southampton,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Sheffield United,Wolves,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Aston Villa,Newcastle,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Middlesbrough,Bournemouth,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Chelsea,Man United,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Liverpool,Coventry,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Crystal Palace,Leicester,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,08/01/2000,Leeds,Everton,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Sunderland,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Tottenham,Southampton,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Sheffield United,Watford,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,West Ham,Newcastle,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Middlesbrough,Wolves,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Aston Villa,Man United,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Liverpool,Bournemouth,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Chelsea,Leicester,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Leeds,Coventry,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,15/01/2000,Crystal Palace,Everton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Arsenal,Southampton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Sheffield United,Sunderland,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Tottenham,Newcastle,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Middlesbrough,Watford,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,West Ham,Man United,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Liverpool,Wolves,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Aston Villa,Leicester,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Leeds,Bournemouth,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Chelsea,Everton,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,22/01/2000,Crystal Palace,Coventry,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Sheffield United,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Southampton,Newcastle,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Middlesbrough,Sunderland,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Tottenham,Man United,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Liverpool,Watford,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,West Ham,Leicester,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Leeds,Wolves,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Aston Villa,Everton,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Crystal Palace,Bournemouth,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,29/01/2000,Chelsea,Coventry,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Arsenal,Newcastle,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Middlesbrough,Sheffield United,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Southampton,Man United,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Liverpool,Sunderland,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Tottenham,Leicester,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Leeds,Watford,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,West Ham,Everton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Crystal Palace,Wolves,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Aston Villa,Coventry,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,05/02/2000,Chelsea,Bournemouth,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Middlesbrough,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Newcastle,Man United,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Liverpool,Sheffield United,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Southampton,Leicester,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Leeds,Sunderland,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Tottenham,Everton,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Crystal Palace,Watford,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,West Ham,Coventry,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Chelsea,Wolves,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,12/02/2000,Aston Villa,Bournemouth,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Arsenal,Man United,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Liverpool,Middlesbrough,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Newcastle,Leicester,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Leeds,Sheffield United,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Southampton,Everton,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Crystal Palace,Sunderland,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Tottenham,Coventry,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Chelsea,Watford,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,West Ham,Bournemouth,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,19/02/2000,Aston Villa,Wolves,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Liverpool,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Man United,Leicester,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Leeds,Middlesbrough,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Newcastle,Everton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Crystal Palace,Sheffield United,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Southampton,Coventry,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Chelsea,Sunderland,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Tottenham,Bournemouth,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,Aston Villa,Watford,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,26/02/2000,West Ham,Wolves,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Arsenal,Leicester,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Leeds,Liverpool,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Man United,Everton,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Crystal Palace,Middlesbrough,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Newcastle,Coventry,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Chelsea,Sheffield United,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Southampton,Bournemouth,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Aston Villa,Sunderland,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,Tottenham,Wolves,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,04/03/2000,West Ham,Watford,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Leeds,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Leicester,Everton,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Crystal Palace,Liverpool,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Man United,Coventry,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Chelsea,Middlesbrough,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Newcastle,Bournemouth,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Aston Villa,Sheffield United,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Southampton,Wolves,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,West Ham,Sunderland,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,11/03/2000,Tottenham,Watford,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Arsenal,Everton,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Crystal Palace,Leeds,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Leicester,Coventry,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Chelsea,Liverpool,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Man United,Bournemouth,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Aston Villa,Middlesbrough,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Newcastle,Wolves,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,West Ham,Sheffield United,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Southampton,Watford,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,18/03/2000,Tottenham,Sunderland,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Crystal Palace,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Everton,Coventry,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Chelsea,Leeds,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Leicester,Bournemouth,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Aston Villa,Liverpool,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Man United,Wolves,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,West Ham,Middlesbrough,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Newcastle,Watford,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Tottenham,Sheffield United,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,25/03/2000,Southampton,Sunderland,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Arsenal,Coventry,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Chelsea,Crystal Palace,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Everton,Bournemouth,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Aston Villa,Leeds,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Leicester,Wolves,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,West Ham,Liverpool,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Man United,Watford,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Tottenham,Middlesbrough,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Newcastle,Sunderland,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,01/04/2000,Southampton,Sheffield United,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Chelsea,Arsenal,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Coventry,Bournemouth,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Aston Villa,Crystal Palace,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Everton,Wolves,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,West Ham,Leeds,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Leicester,Watford,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Tottenham,Liverpool,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Man United,Sunderland,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Southampton,Middlesbrough,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,08/04/2000,Newcastle,Sheffield United,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Arsenal,Bournemouth,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Aston Villa,Chelsea,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Coventry,Wolves,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,West Ham,Crystal Palace,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Everton,Watford,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Tottenham,Leeds,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Leicester,Sunderland,2,0,H,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Southampton,Liverpool,3,1,H,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Man United,Sheffield United,0,2,A,2.10,3.50,3.50,1.90,1.95
+E0,15/04/2000,Newcastle,Middlesbrough,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Aston Villa,Arsenal,1,0,H,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Bournemouth,Wolves,2,1,H,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,West Ham,Chelsea,3,2,H,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Coventry,Watford,0,0,D,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Tottenham,Crystal Palace,1,1,D,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Everton,Sunderland,2,2,D,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Southampton,Leeds,3,0,H,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Leicester,Sheffield United,0,1,A,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Newcastle,Liverpool,1,2,A,2.10,3.50,3.50,1.90,1.95
+E0,22/04/2000,Man United,Middlesbrough,2,0,H,2.10,3.50,3.50,1.90,1.95
