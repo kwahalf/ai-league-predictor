@@ -11,6 +11,7 @@ test is skipped there unless `scripts/` is mounted next to it (e.g. at /scripts)
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,8 @@ if _AUDIT_PATH is None:
 
 _spec = importlib.util.spec_from_file_location("check_view_security_invoker", _AUDIT_PATH)
 audit = importlib.util.module_from_spec(_spec)
+# Registered before exec: dataclasses look the module up in sys.modules.
+sys.modules[_spec.name] = audit
 _spec.loader.exec_module(audit)
 
 
@@ -167,6 +170,48 @@ def test_dollar_tag_with_digits_does_not_hide_view(tmp_path):
     findings = _scan(tmp_path, sql)
     assert len(findings) == 1
     assert findings[0].location.endswith(":2")
+
+
+def test_quoted_column_name_cannot_mask_options(tmp_path):
+    sql = (
+        'create view v_bad ("with (security_invoker)") '
+        "with (security_invoker = false) as select 1;"
+    )
+    assert len(_scan(tmp_path, sql)) == 1
+
+
+@pytest.mark.parametrize("value", ["$$false$$", "$flag$off$flag$", "+0", "-0", "1 + 0"])
+def test_unreadable_or_false_values_are_findings(tmp_path, value):
+    sql = f"create view v_bad with (security_invoker = {value}) as select 1;"
+    assert len(_scan(tmp_path, sql)) == 1
+
+
+def test_dollar_inside_identifier_is_not_a_dollar_quote(tmp_path):
+    sql = (
+        "create table t (col$tag$ integer);\n"
+        "-- $tag$ /* text\n"
+        "create view v_bad as select 1;\n"
+    )
+    findings = _scan(tmp_path, sql)
+    assert len(findings) == 1
+    assert findings[0].location.endswith(":3")
+
+
+def test_view_created_inside_function_body_is_scanned(tmp_path):
+    sql = (
+        "create function f() returns void language plpgsql as $fn$\n"
+        "begin\n"
+        "  create view v_dyn as select 1;\n"
+        "end $fn$;\n"
+    )
+    findings = _scan(tmp_path, sql)
+    assert len(findings) == 1
+    assert findings[0].location.endswith(":3")
+
+
+def test_create_view_text_in_string_literal_is_ignored(tmp_path):
+    sql = "comment on table t is 'create view v_fake as select 1';"
+    assert _scan(tmp_path, sql) == []
 
 
 def test_repo_migrations_pass():

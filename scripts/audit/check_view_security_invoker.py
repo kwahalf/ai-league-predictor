@@ -5,16 +5,21 @@ the owner's privileges and bypasses base-table RLS. The frontend queries views, 
 this makes RLS non-load-bearing on the real surface even after anon read is removed
 (see #272). Existence-only SQL tests never catch this.
 
-Heuristic (textual, no SQL-parser dep): SQL comments are blanked out first, then for
-each `CREATE [OR REPLACE] VIEW <name>` the text up to the view body (`AS`) is searched
-for the `security_invoker` option and its value is parsed. Only a true value
-(`true`/`on`/`yes`/`1`, or the bare option, which Postgres reads as true) is safe;
-`false`/`off`/`no`/`0`, an unrecognised value, or no option at all is a finding.
+Method (no SQL-parser dependency): each migration is split into SQL tokens by a
+small lexer that understands comments (`--`, nested `/* */`), single-quoted and
+`E'...'` strings, quoted identifiers and dollar-quoted bodies. For each
+`CREATE [OR REPLACE] [MATERIALIZED] VIEW [IF NOT EXISTS] <name>`, an optional
+column list is skipped and the view's own `WITH (...)` options list is parsed.
+Only `security_invoker` set to a true value (`true`/`on`/`yes`/`1`, or the bare
+option, which Postgres reads as true) is safe. A false value, any value the
+audit can't read as true, or no option at all is a finding. Dollar-quoted bodies
+(e.g. functions) are scanned too, since they can hold dynamic `CREATE VIEW`s.
 """
 from __future__ import annotations
 
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 try:
@@ -23,109 +28,205 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _common import CheckResult, Finding, emit, repo_root  # type: ignore
 
-_CREATE_VIEW = re.compile(
-    r"create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?([A-Za-z0-9_.\"]+)",
-    re.IGNORECASE,
-)
-
-# The view's `WITH (...)` options list; a column list before it is not options.
-_WITH_OPTIONS = re.compile(r"\bwith\s*\(([^)]*)\)", re.IGNORECASE)
-# `security_invoker` (optionally a quoted identifier) with an optional `= value`;
-# the value may be quoted.
-_SECURITY_INVOKER = re.compile(
-    r"(?:\"security_invoker\"|\bsecurity_invoker\b)"
-    r"(?:\s*=\s*('[^']*'|\"[^\"]*\"|[A-Za-z0-9_]+))?",
-    re.IGNORECASE,
-)
-# Dollar-quote opening tag: `$$` or `$tag$`, tag an identifier (digits allowed
-# after the first character).
-_DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
-# Postgres boolean spellings it accepts for reloptions.
+# Postgres boolean spellings it accepts as true for reloptions.
 _TRUE_VALUES = {"true", "on", "yes", "1", "t", "y"}
 
+# Unquoted identifiers and numbers. `$` is allowed after the first character.
+_WORD = re.compile(r"[A-Za-z0-9_\x80-￿][A-Za-z0-9_$\x80-￿]*")
+# Dollar-quote opening tag: `$$` or `$tag$`, tag an identifier.
+_DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_\x80-￿][A-Za-z0-9_\x80-￿]*)?\$")
+# Modifiers allowed between CREATE and VIEW.
+_VIEW_MODIFIERS = {"or", "replace", "temp", "temporary", "recursive", "materialized"}
 
-def strip_sql_comments(text: str) -> str:
-    """Blank out `--` and `/* */` comments, keeping newlines so line numbers hold.
 
-    Single-quoted strings (including `E'...'` escape strings with backslash
-    escapes), double-quoted identifiers and dollar-quoted bodies are skipped so
-    comment markers inside them are left alone.
-    """
-    out: list[str] = []
+@dataclass
+class Token:
+    kind: str  # word | ident | string | dollar | punct
+    value: str  # word text, unquoted identifier/string content, or the char
+    pos: int  # offset of the token's first character in the text
+
+
+def tokenize(text: str) -> list[Token]:
+    """Split SQL into tokens, dropping whitespace and comments."""
+    tokens: list[Token] = []
     i, n = 0, len(text)
     while i < n:
         ch = text[i]
-        if text.startswith("--", i):
+        if ch.isspace():
+            i += 1
+        elif text.startswith("--", i):
             end = text.find("\n", i)
-            end = n if end == -1 else end
-            out.append(" " * (end - i))
-            i = end
+            i = n if end == -1 else end
         elif text.startswith("/*", i):
             # Postgres block comments nest.
-            depth, j = 1, i + 2
-            while j < n and depth:
-                if text.startswith("/*", j):
-                    depth, j = depth + 1, j + 2
-                elif text.startswith("*/", j):
-                    depth, j = depth - 1, j + 2
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if text.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
                 else:
-                    j += 1
-            out.append("".join(c if c == "\n" else " " for c in text[i:j]))
-            i = j
+                    i += 1
         elif ch in ("'", '"'):
-            # E'...' allows backslash escapes, e.g. E'it\'s'.
-            backslash_escapes = (
-                ch == "'"
-                and i > 0
-                and text[i - 1] in "eE"
-                and (i < 2 or not (text[i - 2].isalnum() or text[i - 2] == "_"))
-            )
-            j = i + 1
-            while j < n:
-                if backslash_escapes and text[j] == "\\":
-                    j += 2
-                    continue
-                if text[j] == ch:
-                    if j + 1 < n and text[j + 1] == ch:  # doubled quote escape
-                        j += 2
-                        continue
-                    break
-                j += 1
-            out.append(text[i : j + 1])
-            i = j + 1
-        elif ch == "$":
-            m = _DOLLAR_TAG.match(text, i)
-            if m:
-                tag = m.group(0)
-                end = text.find(tag, i + len(tag))
-                end = n if end == -1 else end + len(tag)
-                out.append(text[i:end])
-                i = end
-            else:
-                out.append(ch)
-                i += 1
+            value, i_end = _read_quoted(text, i, backslash_escapes=False)
+            tokens.append(Token("string" if ch == "'" else "ident", value, i))
+            i = i_end
+        elif ch in "eE" and text.startswith("'", i + 1):
+            # E'...' escape string: backslash escapes the next character.
+            value, i_end = _read_quoted(text, i + 1, backslash_escapes=True)
+            tokens.append(Token("string", value, i))
+            i = i_end
+        elif ch == "$" and (m := _DOLLAR_TAG.match(text, i)):
+            # Words consume their own `$`s, so a `$` here is at a token boundary.
+            tag = m.group(0)
+            body_start = m.end()
+            close = text.find(tag, body_start)
+            body_end = n if close == -1 else close
+            tokens.append(Token("dollar", text[body_start:body_end], body_start))
+            i = n if close == -1 else close + len(tag)
+        elif m := _WORD.match(text, i):
+            tokens.append(Token("word", m.group(0), i))
+            i = m.end()
         else:
-            out.append(ch)
+            tokens.append(Token("punct", ch, i))
             i += 1
-    return "".join(out)
+    return tokens
 
 
-def security_invoker_enabled(header: str) -> bool:
-    """True when the view's `WITH (...)` options set `security_invoker` to true.
+def _read_quoted(text: str, start: int, *, backslash_escapes: bool) -> tuple[str, int]:
+    """Read a quoted string or identifier at `start`; return (content, end)."""
+    quote = text[start]
+    out: list[str] = []
+    j, n = start + 1, len(text)
+    while j < n:
+        c = text[j]
+        if backslash_escapes and c == "\\":
+            out.append(text[j + 1 : j + 2])
+            j += 2
+            continue
+        if c == quote:
+            if text.startswith(quote, j + 1):  # doubled quote escape
+                out.append(quote)
+                j += 2
+                continue
+            return "".join(out), j + 1
+        out.append(c)
+        j += 1
+    return "".join(out), n
 
-    Only the options list is searched, so a column named `security_invoker` in
-    the view's column list does not count.
-    """
-    options = _WITH_OPTIONS.search(header)
-    if not options:
-        return False
-    match = _SECURITY_INVOKER.search(options.group(1))
-    if not match:
-        return False
-    value = match.group(1)
-    if value is None:  # bare `WITH (security_invoker)` means true
-        return True
-    return value.strip("'\"").lower() in _TRUE_VALUES
+
+def _is_word(tokens: list[Token], k: int, *words: str) -> bool:
+    return k < len(tokens) and tokens[k].kind == "word" and tokens[k].value.lower() in words
+
+
+def _is_punct(tokens: list[Token], k: int, ch: str) -> bool:
+    return k < len(tokens) and tokens[k].kind == "punct" and tokens[k].value == ch
+
+
+def _skip_parens(tokens: list[Token], k: int) -> int:
+    """`tokens[k]` is `(`; return the index just past its matching `)`."""
+    depth = 0
+    while k < len(tokens):
+        if _is_punct(tokens, k, "("):
+            depth += 1
+        elif _is_punct(tokens, k, ")"):
+            depth -= 1
+            if depth == 0:
+                return k + 1
+        k += 1
+    return k
+
+
+def _split_options(tokens: list[Token]) -> list[list[Token]]:
+    """Split the tokens inside `WITH (...)` on top-level commas."""
+    options: list[list[Token]] = [[]]
+    depth = 0
+    for tok in tokens:
+        if tok.kind == "punct" and tok.value == "(":
+            depth += 1
+        elif tok.kind == "punct" and tok.value == ")":
+            depth -= 1
+        elif tok.kind == "punct" and tok.value == "," and depth == 0:
+            options.append([])
+            continue
+        options[-1].append(tok)
+    return [opt for opt in options if opt]
+
+
+def security_invoker_from_options(option_tokens: list[Token]) -> bool:
+    """True when the options set `security_invoker` to true (the last setting wins)."""
+    enabled = False
+    for opt in _split_options(option_tokens):
+        name = opt[0]
+        if name.kind not in ("word", "ident") or name.value.lower() != "security_invoker":
+            continue
+        if len(opt) == 1:  # bare option means true
+            enabled = True
+        elif (
+            len(opt) == 3
+            and opt[1].kind == "punct"
+            and opt[1].value == "="
+            and opt[2].kind in ("word", "ident", "string", "dollar")
+        ):
+            enabled = opt[2].value.lower() in _TRUE_VALUES
+        else:  # anything we can't read as true, e.g. `= +0`
+            enabled = False
+    return enabled
+
+
+@dataclass
+class ViewDecl:
+    name: str
+    pos: int
+    secure: bool
+
+
+def find_views(text: str, offset: int = 0) -> list[ViewDecl]:
+    """Every CREATE VIEW in `text`, including those inside dollar-quoted bodies."""
+    tokens = tokenize(text)
+    views: list[ViewDecl] = []
+    k = 0
+    while k < len(tokens):
+        tok = tokens[k]
+        if tok.kind == "dollar":
+            views.extend(find_views(tok.value, offset + tok.pos))
+            k += 1
+            continue
+        if not _is_word(tokens, k, "create"):
+            k += 1
+            continue
+        start = tok.pos
+        j = k + 1
+        while _is_word(tokens, j, *_VIEW_MODIFIERS):
+            j += 1
+        if not _is_word(tokens, j, "view"):
+            k += 1
+            continue
+        j += 1
+        if _is_word(tokens, j, "if") and _is_word(tokens, j + 1, "not") and _is_word(tokens, j + 2, "exists"):
+            j += 3
+        # Name: identifiers separated by dots, e.g. public.v or "public"."v".
+        parts: list[str] = []
+        while j < len(tokens) and tokens[j].kind in ("word", "ident"):
+            parts.append(tokens[j].value)
+            j += 1
+            if _is_punct(tokens, j, "."):
+                j += 1
+            else:
+                break
+        if not parts:
+            k += 1
+            continue
+        if _is_punct(tokens, j, "("):  # column list
+            j = _skip_parens(tokens, j)
+        secure = False
+        if _is_word(tokens, j, "with") and _is_punct(tokens, j + 1, "("):
+            close = _skip_parens(tokens, j + 1)
+            secure = security_invoker_from_options(tokens[j + 2 : close - 1])
+            j = close
+        views.append(ViewDecl(name=".".join(parts), pos=offset + start, secure=secure))
+        k = j
+    return views
 
 
 def scan_migrations(migrations_dir: Path) -> list[Finding]:
@@ -133,26 +234,21 @@ def scan_migrations(migrations_dir: Path) -> list[Finding]:
     if not migrations_dir.exists():
         return []
     for path in sorted(migrations_dir.glob("*.sql")):
-        text = strip_sql_comments(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
         rel = f"supabase/migrations/{path.name}"
-        for m in _CREATE_VIEW.finditer(text):
-            view_name = m.group(1)
-            normalized_view_name = view_name.replace('"', "").lower()
-            # header = text between CREATE VIEW and the view body keyword ` AS `
-            tail = text[m.end():]
-            as_match = re.search(r"\bas\b", tail, re.IGNORECASE)
-            header = tail[: as_match.start()] if as_match else tail[:200]
-            if security_invoker_enabled(header):
+        for view in find_views(text):
+            normalized_view_name = view.name.lower()
+            if view.secure:
                 findings_by_view.pop(normalized_view_name, None)
                 continue
 
-            line = text[: m.start()].count("\n") + 1
+            line = text[: view.pos].count("\n") + 1
             findings_by_view[normalized_view_name] = Finding(
                 check="view-security-invoker",
                 severity="HIGH",
                 location=f"{rel}:{line}",
                 message=(
-                    f"View `{view_name}` is created without "
+                    f"View `{view.name}` is created without "
                     "`WITH (security_invoker = true)` — it bypasses base-table RLS."
                 ),
                 issue="#272",
