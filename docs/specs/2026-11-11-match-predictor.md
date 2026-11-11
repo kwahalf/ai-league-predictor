@@ -1,7 +1,7 @@
 # Match Predictor Specification
 
 **Status:** Draft
-**Owner:** [Name/Team]
+**Owner:** @kwahalf
 **Created:** 2026-11-11
 **Last Updated:** 2026-11-11
 

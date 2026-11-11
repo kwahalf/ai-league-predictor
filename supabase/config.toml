@@ -2,7 +2,12 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "volaris-template-london"
+#
+# This repo runs two stacks side by side (dev and live). The values here are the dev defaults;
+# `make` overrides project_id and every port per stack through SUPABASE_* environment variables
+# (SUPABASE_PROJECT_ID, SUPABASE_API_PORT, ...) taken from stacks/<stack>.env. Change ports there,
+# not here.
+project_id = "ai-league-predictor-dev"
 
 [api]
 enabled = true
@@ -122,7 +127,7 @@ enabled = true
 # in emails.
 site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://localhost:3000", "http://127.0.0.1:3000"]
+additional_redirect_urls = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3100", "http://127.0.0.1:3100"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).

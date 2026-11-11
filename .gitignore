@@ -40,3 +40,5 @@ temporal/worker/node_modules.bak*
 volaris_test_data-main
 
 *.txt
+# Database backups (make backup)
+backups/

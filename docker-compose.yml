@@ -1,4 +1,5 @@
-name: volaris-template-london
+# The project name comes from the stack (COMPOSE_PROJECT_NAME, set by `make`); this is the dev default.
+name: ai-league-predictor-dev
 
 # The full local Supabase stack (API/Kong, Auth, Storage, Studio, Postgres) is
 # run by the Supabase CLI via `supabase start`, NOT by this compose file --
@@ -15,7 +16,7 @@ services:
       POSTGRES_PASSWORD: temporal
       POSTGRES_DB: temporal
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${TEMPORAL_DB_PORT:-5433}:5432"
     volumes:
       - temporal-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -38,7 +39,7 @@ services:
       - POSTGRES_SEEDS=temporal-db
       - TEMPORAL_CLI_ADDRESS=localhost:7233
     ports:
-      - "127.0.0.1:7234:7233"
+      - "127.0.0.1:${TEMPORAL_GRPC_PORT:-7234}:7233"
     healthcheck:
       test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
       interval: 10s
@@ -54,9 +55,9 @@ services:
         condition: service_healthy
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+      - TEMPORAL_CORS_ORIGINS=${TEMPORAL_CORS_ORIGINS:-http://localhost:3000}
     ports:
-      - "127.0.0.1:${TEMPORAL_UI_PORT:-8080}:8080"
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8081}:8080"
 
   temporal-worker:
     build: ./temporal
@@ -120,7 +121,7 @@ services:
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-dev-service-role-key}
       - AGENT_API_ALLOWED_ORIGINS=${AGENT_API_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${AGENT_API_PORT:-8000}:8000"
 
   frontend:
     build:
@@ -134,7 +135,7 @@ services:
       - VITE_API_URL=${VITE_API_URL:-http://localhost:54321/functions/v1}
       - VITE_AGENT_API_URL=${VITE_AGENT_API_URL:-http://localhost:8000}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
 
   # LiteLLM proxy -- OPT-IN, so `make up` does not start it:
   #
@@ -161,7 +162,7 @@ services:
       - AZURE_API_VERSION=${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
 
 volumes:
   temporal-db-data:
@@ -169,4 +170,4 @@ volumes:
 networks:
   supabase:
     external: true
-    name: supabase_network_volaris-template-london
+    name: supabase_network_${SUPABASE_PROJECT_ID:-ai-league-predictor-dev}

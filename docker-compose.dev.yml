@@ -1,4 +1,4 @@
-name: volaris-template-london
+name: ai-league-predictor-dev
 
 services:
   frontend:
