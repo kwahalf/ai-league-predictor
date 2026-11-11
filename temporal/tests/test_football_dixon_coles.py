@@ -121,6 +121,9 @@ def test_top_scorelines_are_sorted_and_come_from_the_matrix() -> None:
 def test_score_matrix_rejects_bad_input() -> None:
     with pytest.raises(ValueError):
         score_matrix(0.0, 1.0)
+    for rho in (float("nan"), float("inf"), -float("inf")):
+        with pytest.raises(ValueError):
+            ScoreForecast.from_rates(1.0, 1.0, rho)
     for line in (2.0, -0.5, -1.5):
         with pytest.raises(ValueError):
             ScoreForecast.from_rates(1.0, 1.0).over_under(line)

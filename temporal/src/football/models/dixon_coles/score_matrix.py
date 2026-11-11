@@ -53,6 +53,8 @@ def score_matrix(
     """The normalised ``(max_goals + 1) × (max_goals + 1)`` matrix ``P[home_goals, away_goals]``."""
     if not (lam > 0 and mu > 0 and np.isfinite(lam) and np.isfinite(mu)):
         raise ValueError(f"expected goals must be positive and finite, got λ={lam}, μ={mu}")
+    if not np.isfinite(rho):
+        raise ValueError(f"ρ must be finite, got {rho}")
     if max_goals < 1:
         raise ValueError("max_goals must be at least 1")
     tau = np.maximum(tau_factors(lam, mu, rho), 0.0)
