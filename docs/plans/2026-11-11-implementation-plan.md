@@ -67,7 +67,7 @@ Goal: 11 seasons of EPL results and odds in Postgres, refreshed daily, with chec
 | 1.3 | `IngestWorkflow` | M | Activities: download, parse (from 1.2), upsert idempotently. Also stores the raw CSVs in Supabase Storage. Backfill command for 2016/17–2026/27. Temporal Schedule: daily 06:00 UTC, including `fixtures.csv`. Set up the **live stack** in a long-lived checkout on the runner, with its own project ID and ports, started at boot (see "Hosting on the runner"). | Backfill loads 10 × 380 matches plus the current season; a second run changes nothing |
 | 1.4 | Data-quality checks | S | A check activity run after every ingest: 380 matches per completed season, no duplicate fixtures, scores only on finished matches, odds > 1.0, margins between 0 and 15%. A failure fails the workflow visibly in the Temporal UI. | A deliberately corrupted fixture file trips each check |
 
-**Checkpoint:** spot-check one gameweek per season against the source files by hand before starting milestone 2.
+**Checkpoint:** spot-check one gameweek per season against the source files by hand. Modelling can start earlier on the CSV files; the check gates step 2.6, where the first model version is recorded from the database.
 
 ## Milestone 2: Models and backtest (spec phase 2)
 
@@ -75,8 +75,9 @@ Goal: three model layers, honestly backtested, with live predictions being store
 
 | # | PR | Size | Contents | Done when |
 |---|---|---|---|---|
-| 2.1 | Model tables and metrics | M | Migration: `model_versions`, `team_ratings`, `predictions` (with the before-kick-off trigger), `prediction_scores`, `market_scores`. Python: RPS, log loss, Brier and calibration buckets, plus margin removal and the consensus. Scores the bookmakers on all history, giving the bar the models must reach. | Market RPS per season is in the database; metric functions are tested against hand-computed examples |
-| 2.2 | Backtest harness and leakage tests | M | Walk-forward loop: for each week, the model sees only earlier matches and only pre-match odds. The no-leakage tests from the spec go in here, before any model exists, along with a trivial "home win 45%" model to exercise the harness. | Leakage tests pass; the trivial model produces a full 9-season backtest |
+| 2.1a | Metrics library | S | Pure Python, no database: RPS, log loss, Brier and calibration buckets, margin removal and the consensus. | Every function matches hand-computed examples |
+| 2.1b | Model tables and market scores | M | Migration: `model_versions`, `team_ratings`, `predictions` (with the before-kick-off trigger), `prediction_scores`, `market_scores`. Scores the bookmakers on all history with the 2.1a library, giving the bar the models must reach. | Market RPS per season is in the database |
+| 2.2 | Backtest harness and leakage tests | M | Runs from the parsed CSV files (1.2), so it doesn't need the database. Walk-forward loop: for each week, the model sees only earlier matches and only pre-match odds. The no-leakage tests from the spec go in here, before any model exists, along with a trivial "home win 45%" model to exercise the harness. | Leakage tests pass; the trivial model produces a full 9-season backtest |
 | 2.3 | Elo baseline | S | Elo ratings, and an ordered-logit mapping to 1X2. | Elo backtest stored; clearly beats the trivial model |
 | 2.4 | Dixon–Coles fundamentals | L | Time-weighted maximum-likelihood fit, score matrix, derived markets (1X2, xG, O/U 2.5, BTTS). Promoted-team priors. | Recovers known parameters on synthetic data; fundamentals RPS beats Elo in the backtest |
 | 2.5 | Headline blend and score solver | M | Multinomial logistic blend of fundamentals, consensus and Elo; the λ/μ solver that makes the score matrix agree with the headline 1X2; fallback to fundamentals when no odds exist. | Headline RPS at least matches the consensus over 2017/18–2025/26; solver within 0.5 points |
@@ -157,23 +158,106 @@ locations, which aren't in the free data. They'd come from the Track B provider,
 - [ ] Which second league (Track A).
 - [ ] Monthly budget for a team-news feed, if any (Track B).
 
-## Dependencies between steps
+## Parallel delivery with multiple agents
 
+Steps that don't depend on each other are built at the same time by separate Claude agents. The order
+of work is set by real dependencies below, not by step numbers.
+
+### Who does what
+
+- **Coordinator** (the main Claude session): picks the next steps, starts an agent for each, watches
+  their PRs, and posts the final summary that tags @kwahalf. One coordinator, so there's one place to
+  ask "what's in flight?".
+- **Worker agents:** one agent per step, so **one agent = one branch = one PR**. Each works in its own
+  git worktree (a separate working folder on its own branch), runs the review process steps 1–5
+  (CI, Copilot review, fixes, re-review), and hands back to the coordinator.
+- **@kwahalf:** final sign-off and merge, unchanged.
+
+### Real dependencies
+
+| Step | Can start when these have merged |
+|---|---|
+| 0.2, 1.1, 1.2, 2.1a | 0.1 |
+| 1.3 | 1.1, 1.2 |
+| 1.4 | 1.3 |
+| 2.1b | 1.3, 2.1a |
+| 2.2 | 1.2, 2.1a |
+| 2.3, 2.4 | 2.2 |
+| 2.5 | 2.3, 2.4 |
+| 2.6 | 2.5, 2.1b, 1.4 and the spot check |
+| 2.7 | 2.6 |
+| 3.1 | 2.1b |
+| 3.2, 3.3, 3.4 | 3.1 |
+| 3.5 | 3.2, 3.4 |
+| Milestone 4 tracks | milestone 3 shipped and 10 live gameweeks scored |
+
+```mermaid
+flowchart LR
+  s01[0.1 template] --> s02[0.2 ADR]
+  s01 --> s11[1.1 schema]
+  s01 --> s12[1.2 CSV parser]
+  s01 --> s21a[2.1a metrics]
+  s11 --> s13[1.3 ingest]
+  s12 --> s13
+  s13 --> s14[1.4 quality checks]
+  s14 --> spot{{spot check}}
+  s13 --> s21b[2.1b model tables]
+  s21a --> s21b
+  s12 --> s22[2.2 backtest harness]
+  s21a --> s22
+  s22 --> s23[2.3 Elo]
+  s22 --> s24[2.4 Dixon-Coles]
+  s23 --> s25[2.5 blend]
+  s24 --> s25
+  s25 --> s26[2.6 first model version]
+  s21b --> s26
+  spot --> s26
+  s26 --> s27[2.7 predict and score]
+  s27 --> silent{{4 silent gameweeks}}
+  s21b --> s31[3.1 views + fixtures page]
+  s31 --> s32[3.2 match page]
+  s31 --> s33[3.3 performance page]
+  s31 --> s34[3.4 agent tools]
+  s32 --> s35[3.5 explain button]
+  s34 --> s35
 ```
-0.1 ─┬─ 0.2
-     └─ 1.1 ─ 1.2 ─ 1.3 ─ 1.4 ─ 2.1 ─ 2.2 ─ 2.3 ─ 2.4 ─ 2.5 ─ 2.6 ─ 2.7 ─ [4 gameweeks]
-                                                                   │
-                                                                   └─ 3.1 ─┬─ 3.2 ─ 3.5
-                                                                           ├─ 3.3
-                                                                           └─ 3.4 ─ 3.5
 
-[milestone 3 shipped + 10 live gameweeks] ─┬─ Track A: 4.A1 ─ 4.A2 ─ 4.A3
-                                           ├─ Track B: 4.B1 ─ 4.B2 ─ 4.B3
-                                           │                      └─ [a season of team-news history] ─ 4.B4
-                                           └─ Track C: 4.C1 ─ 4.C2
-```
+What this unlocks:
+- **Pure-code steps run beside the data work.** The CSV parser (1.2), metrics (2.1a), backtest harness
+  (2.2) and the models (2.3, 2.4, 2.5) don't touch the database: the backtest reads the parsed CSV
+  files directly. Models are developed while ingestion is still being built.
+- **Elo (2.3) and Dixon–Coles (2.4) are built at the same time** on top of the harness.
+- **The UI starts early.** Pages (3.1–3.4) are built against the views with sample rows as soon as the
+  model tables exist (2.1b), instead of waiting for real predictions.
+- **Milestone 4's three tracks run in parallel.**
+- **The spot check moves:** it gates step 2.6 (when a real model version is recorded from the
+  database), not the start of modelling.
 
-UI work can start right after 2.7, while the 4-gameweek silent run is still going. The checkpoint gates **trusting** the numbers, not building the screens. The three milestone 4 tracks are independent of each other.
+**Critical path** (the chain that sets the finish date): 0.1 → 1.2 → 2.2 → 2.4 → 2.5 → 2.6 → 2.7.
+Dixon–Coles (L) is the longest step on it, so it gets an agent as soon as 2.2 merges. As a rough
+guide, sizes along the critical path add up to about 18 working days to the start of the silent month,
+against about 31 if every step ran one after another, before review waiting time.
+
+### Rules for running agents in parallel
+
+- **At most 3 agents at once**, for two reasons: @kwahalf's review time (no more than 3 PRs waiting
+  for sign-off at a time), and the runner (2 CPUs, about 7.6 GB RAM, about 9 GB free disk).
+- **Only one agent uses a database at a time.** The runner fits the live stack plus **one** dev stack
+  (a full stack uses about 2.3 GB of RAM). Steps that need Supabase (1.1, 1.3, 1.4, 2.1b, 2.7, 3.1–3.5)
+  queue for the dev stack. Pure-code steps run their tests in the worker image alone, which is cheap.
+- **One migration at a time.** Only the agent holding the dev stack may add a migration, so migration
+  timestamps and order never conflict.
+- **Agents start from `main`, never from another agent's unmerged branch.** A step starts only when
+  every step it depends on has merged. No stacked PRs.
+- **Stay in your lane.** Each step lists the files and folders it owns in its PR description. If an
+  agent needs to change something another open PR owns, it stops and tells the coordinator instead.
+- **Heavy backtests run in CI, not on the runner.** Full 9-season walk-forward runs for 2.4–2.6 are
+  CPU-heavy. They run as a GitHub Actions job on GitHub's machines, with only small backtests locally.
+- **Copilot reviews each PR independently,** and the 3-round cap applies per PR.
+
+If more parallelism is wanted later, agents can run as separate cloud Claude sessions instead of on
+this runner, testing through CI. Then the limits are review time and the one-migration rule, not the
+runner.
 
 ## Decisions
 
