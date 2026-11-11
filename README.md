@@ -4,7 +4,7 @@
 > run regenerates this branch. The machine-readable source of truth is [`runs.jsonl`](./runs.jsonl).
 > Deployed-environment E2E trends live separately on the [`e2e-history`](../../tree/e2e-history) branch.
 
-**Last updated:** 2026-11-11 14:38Z · 4 records · suites: `temporal`
+**Last updated:** 2026-11-11 14:46Z · 5 records · suites: `temporal`
 
 ![trend](./trend.svg)
 
@@ -12,13 +12,14 @@
 
 | Suite | Latest | When (UTC) | Pass 24h | Pass 7d | Green streak | Runs |
 |---|---|---|--:|--:|--:|--:|
-| `temporal` | ✅ `passed` [↗](https://github.com/kwahalf/ai-league-predictor/actions/runs/43040407722) | 2026-11-11 14:38Z | 100% (4) | 100% (4) | 4 | 4 |
+| `temporal` | ✅ `passed` [↗](https://github.com/kwahalf/ai-league-predictor/actions/runs/43041702117) | 2026-11-11 14:46Z | 100% (5) | 100% (5) | 5 | 5 |
 
 
 ## Recent runs
 
 | When (UTC) | Suite | Result | Pass | Fail | Skip | Duration | Commit | Run |
 |---|---|---|--:|--:|--:|--:|---|---|
+| 2026-11-11 14:46Z | `temporal` | ✅ passed | 265 | 0 | 7 | 2.6s | `ab9bac5` | [#22](https://github.com/kwahalf/ai-league-predictor/actions/runs/43041702117) |
 | 2026-11-11 14:38Z | `temporal` | ✅ passed | 225 | 0 | 7 | 2.3s | `6b9e199` | [#20](https://github.com/kwahalf/ai-league-predictor/actions/runs/43040407722) |
 | 2026-11-11 14:27Z | `temporal` | ✅ passed | 193 | 0 | 7 | 2.0s | `086d8d9` | [#16](https://github.com/kwahalf/ai-league-predictor/actions/runs/43038592517) |
 | 2026-11-11 14:17Z | `temporal` | ✅ passed | 96 | 0 | 7 | 2.0s | `2ef2a4b` | [#11](https://github.com/kwahalf/ai-league-predictor/actions/runs/43036904109) |
