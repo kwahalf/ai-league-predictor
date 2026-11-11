@@ -510,6 +510,13 @@ def test_report_lists_each_season_and_the_market():
     assert "Calibration, market consensus:" in report
 
 
+def test_report_keeps_exact_calibration_bucket_edges():
+    result = run_backtest(fixture_records(), TrivialModel(), warmup_seasons=("1819",), n_buckets=20)
+    report = format_report(result)
+    for label in ("[0.0, 0.05)", "[0.05, 0.1)", "[0.25, 0.3)", "[0.45, 0.5)", "[0.95, 1]"):
+        assert label in report
+
+
 # --- Command line ---------------------------------------------------------------------------
 
 
