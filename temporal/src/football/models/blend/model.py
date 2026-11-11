@@ -109,9 +109,14 @@ class HeadlineForecast:
     elo_diff: float
     """``(R_home + H − R_away) / 400``."""
     weights_trained: bool
-    """Whether the headline used fitted weights (``False``: the prior, i.e. the consensus)."""
+    """Whether the headline used fitted blend weights: ``False`` when it used the prior (the
+    consensus) or, without odds, no blend at all (the fundamentals)."""
     scores: ScoreForecast
-    """Score matrix, xG, O/U, BTTS and top scorelines, consistent with ``headline``."""
+    """Score matrix, xG, O/U, BTTS and top scorelines; agrees with ``headline`` within 0.5 points
+    when ``scores_match_headline``."""
+    scores_match_headline: bool
+    """``True`` without odds (the fundamentals' own matrix) and, with odds, when the solver met
+    its tolerance (``solved.within_tolerance``; see ``solver``, "Unattainable targets")."""
     solved: SolvedScores | None
     """The solver's result (fit quality) when odds were used; ``None`` otherwise."""
 
@@ -264,7 +269,8 @@ class BlendModel:
             market_over_2_5=over,
             used_odds=c.z is not None,
             elo_diff=c.elo_diff,
-            weights_trained=self.weights_trained,
+            weights_trained=self.weights_trained and c.z is not None,
             scores=scores,
+            scores_match_headline=solved is None or solved.within_tolerance,
             solved=solved,
         )

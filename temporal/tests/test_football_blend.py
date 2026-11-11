@@ -252,7 +252,10 @@ def test_no_odds_falls_back_to_fundamentals() -> None:
     rec = records[-1]
     view = dataclasses.replace(match_view(rec), odds=())
     fc = model.forecast(view)
+    assert model.weights_trained
     assert fc.used_odds is False
+    assert fc.weights_trained is False  # no blend weights were used for this forecast
+    assert fc.scores_match_headline
     assert fc.market is None and fc.solved is None
     assert fc.headline == fc.fundamentals == model.fundamentals.predict(view)
     assert model.predict(view) == fc.fundamentals
@@ -277,7 +280,8 @@ def test_forecast_with_odds_agrees_with_headline() -> None:
         assert fc.used_odds is True and fc.weights_trained
         assert fc.headline == model.predict(view)
         assert fc.market == market_consensus(view.odds)
-        assert fc.solved is not None
+        assert fc.solved is not None and fc.solved.within_tolerance
+        assert fc.scores_match_headline
         got = fc.scores.outcome_probabilities()
         assert max(abs(a - b) for a, b in zip(got, fc.headline)) <= ONE_X_TWO_TOLERANCE
         assert fc.market_over_2_5 is not None

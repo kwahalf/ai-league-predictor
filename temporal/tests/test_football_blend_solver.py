@@ -53,8 +53,19 @@ def test_reproduces_dixon_coles_1x2_over_a_grid(rho: float) -> None:
 def test_hits_arbitrary_headlines_within_half_a_point(target, rho: float) -> None:
     solved = solve_scores(target, rho)
     assert solved.max_abs_error_1x2 <= ONE_X_TWO_TOLERANCE
+    assert solved.within_tolerance
     assert solved.max_abs_error_1x2 == pytest.approx(max_error(solved.forecast, target))
     assert solved.forecast.rho == rho
+
+
+@pytest.mark.parametrize("target", [(0.499, 0.5, 0.001), (0.001, 0.5, 0.499), (0.6, 0.399, 0.001)])
+def test_unattainable_targets_are_flagged(target) -> None:
+    """Targets that need an expected-goals value below RATE_BOUNDS can't be met: the result says
+    so rather than passing as headline-consistent."""
+    solved = solve_scores(target, 0.0, over_2_5=0.3)
+    assert solved.max_abs_error_1x2 > ONE_X_TWO_TOLERANCE
+    assert solved.max_abs_error_1x2 == pytest.approx(max_error(solved.forecast, target))
+    assert not solved.within_tolerance
 
 
 def test_market_shaped_headlines_with_over_under() -> None:

@@ -22,8 +22,14 @@ a 4-point disagreement already costs about 0.4 points. The over/under therefore 
 total goals: noticeably in lopsided matches, where the 1X2 barely constrains λ + μ (e.g. λ
 moves from 4.0 to 4.4 for an 8-point gap), hardly at all in balanced ones. If a fit still misses
 the 1X2 by more than the tolerance (very large disagreements), ``solve_scores`` re-solves on the
-1X2 alone, so the tolerance holds whatever the over/under says; ``SolvedScores.used_over_under``
-records which.
+1X2 alone, so the over/under can never be what breaks the tolerance;
+``SolvedScores.used_over_under`` records which.
+
+**Unattainable targets.** A few 1X2 vectors can't be reached at all with expected goals inside
+``RATE_BOUNDS`` (e.g. ``(0.499, 0.5, 0.001)``, which needs an away rate near 0). The solver then
+returns the closest matrix it found and sets ``SolvedScores.within_tolerance`` to ``False``;
+callers must check it before presenting the matrix as agreeing with the headline. Every real
+consensus 1X2 of 2017/18–2025/26 is within tolerance (largest gap 0.41 points).
 
 The search is over (log λ, log μ) within ``RATE_BOUNDS`` (0.02 to 8 goals) with
 ``scipy.optimize.least_squares``, started from a supplied guess (the fundamentals model's own
@@ -64,6 +70,8 @@ class SolvedScores:
     """Largest |matrix 1X2 − target| over home, draw and away."""
     over_2_5_error: float | None
     """Matrix P(over 2.5) − target, or ``None`` without a target."""
+    within_tolerance: bool
+    """Whether ``max_abs_error_1x2 <= ONE_X_TWO_TOLERANCE`` (see "Unattainable targets")."""
 
 
 def _check_target(target: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -143,4 +151,5 @@ def solve_scores(
         used_over_under=use_ou,
         max_abs_error_1x2=error,
         over_2_5_error=None if over_2_5 is None else fc.over_under(2.5)[0] - over_2_5,
+        within_tolerance=error <= ONE_X_TWO_TOLERANCE,
     )
