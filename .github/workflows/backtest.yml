@@ -2,7 +2,8 @@
 # heavy backtests run in CI, not on the runner).
 #
 # - Manually: Actions > Backtest > Run workflow, with the model name (a key of cli.MODELS).
-# - On pull requests that change a model or the harness: runs `dixon_coles` and `trivial`.
+# - On pull requests that change a model or the harness: runs `blend`, `dixon_coles`, `elo` and
+#   `trivial`.
 #
 # Each job downloads the public football-data.co.uk season files, runs
 # `python -m src.football.backtest --model <model>` from temporal/, and writes the report to the
@@ -43,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('[{0}]', toJSON(inputs.model)) || '["dixon_coles", "trivial"]') }}
+        model: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('[{0}]', toJSON(inputs.model)) || '["blend", "dixon_coles", "elo", "trivial"]') }}
     steps:
       - uses: actions/checkout@v4
 
