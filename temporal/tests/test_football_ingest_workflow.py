@@ -21,6 +21,7 @@ from temporalio.worker import Worker
 
 from src.football.ingest.models import CsvSource, IngestRequest, IngestSummary, LoadResult, RawCsvRef
 from src.football.ingest.workflow import IngestWorkflow
+from src.football.quality.models import QualityReport, QualityRequest
 
 
 @pytest.fixture
@@ -64,7 +65,13 @@ class Recorder:
                 matches_in_file=380, matches_inserted=380, prices_dropped=1 if ref.season == "2122" else 0,
             )
 
-        return [fetch, load]
+        # The data-quality check (1.4) runs last; it has its own tests (test_football_quality*.py).
+        @activity.defn(name="football_quality_check")
+        def quality(request: QualityRequest) -> QualityReport:
+            self.calls.append(("quality", request.division, request.current_season))
+            return QualityReport(division=request.division, current_season=request.current_season)
+
+        return [fetch, load, quality]
 
 
 async def _run(env: WorkflowEnvironment, recorder: Recorder, request: IngestRequest) -> IngestSummary:
@@ -94,6 +101,7 @@ async def test_backfill_loads_each_season_in_order_then_fixtures(env):
         ("fetch", "season", "2122"), ("load", "season", "2122"),
         ("fetch", "season", "2627"), ("load", "season", "2627"),
         ("fetch", "fixtures", summary.files[-1].season), ("load", "fixtures", summary.files[-1].season),
+        ("quality", "E0", summary.files[-1].season),
     ]
     assert [f.season for f in summary.files[:3]] == seasons
     assert summary.total("matches_inserted") == 4 * 380
@@ -105,6 +113,7 @@ async def test_default_request_is_the_current_season_and_fixtures(env):
     summary = await _run(env, recorder, IngestRequest())
     # The test server's clock is real time, so the season is whatever is current now.
     kinds = [(c[1], c[2]) for c in recorder.calls if c[0] == "fetch"]
+    assert recorder.calls[-1] == ("quality", "E0", kinds[0][1])
     assert len(kinds) == 2
     assert kinds[0][0] == "season" and kinds[1] == ("fixtures", kinds[0][1])
     assert len(summary.files) == 2
@@ -113,7 +122,8 @@ async def test_default_request_is_the_current_season_and_fixtures(env):
 async def test_fixtures_can_be_left_out(env):
     recorder = Recorder()
     await _run(env, recorder, IngestRequest(seasons=["2324"], include_fixtures=False))
-    assert recorder.calls == [("fetch", "season", "2324"), ("load", "season", "2324")]
+    assert recorder.calls[:2] == [("fetch", "season", "2324"), ("load", "season", "2324")]
+    assert [c[0] for c in recorder.calls[2:]] == ["quality"]
 
 
 async def test_a_flaky_download_is_retried(env):
@@ -128,6 +138,7 @@ async def test_bad_data_fails_the_workflow_and_stops(env):
         await _run(env, recorder, IngestRequest(seasons=["1617", "1718", "1819"]))
     assert ("fetch", "season", "1819") not in recorder.calls
     assert ("load", "fixtures", "2627") not in recorder.calls
+    assert not any(c[0] == "quality" for c in recorder.calls)
 
 
 async def test_an_invalid_season_fails_before_any_activity(env):

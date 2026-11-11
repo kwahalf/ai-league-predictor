@@ -146,6 +146,52 @@ An unknown team name means a new spelling: add it to `TEAM_ALIASES` in
 Logs: `make logs-temporal STACK=live`; each file logs one `football ingest loaded …` line, plus a
 `football ingest dropped prices<=1.0 …` line when it dropped any.
 
+## When the quality check fails
+
+Every `IngestWorkflow` run ends with the data-quality check (plan step 1.4, activity
+`football_quality_check`), which looks at the whole league, not just the files of that run. The
+**current season** is the one running on the run's date, rolling over on 1 July (on 2026-11-11 it is
+2627); every earlier season is **completed**.
+
+| Check | Passes when |
+|---|---|
+| `completed_seasons` | Every completed season (1617 up to last season, plus any other stored season before the current one) has 380 matches, 20 teams, 19 home and 19 away matches per team, every home/away pair once, and every match finished |
+| `current_season` | The current season has at most 20 teams and no team with more than 19 home or 19 away matches |
+| `duplicate_fixtures` | No two matches share season, home and away team, and no team plays twice on the same UK date, across all seasons |
+| `scores_match_status` | Only finished matches have scores, and every finished match has both |
+| `odds_above_one` | No stored price is 1.0 or less |
+| `odds_margins` | Every complete 1X2 set and every complete over/under 2.5 set has a margin (Σ 1/price − 1) between 0% and 15%, apart from the known source errors listed in `KNOWN_MARGIN_EXCEPTIONS` (`temporal/src/football/quality/checks.py`) |
+
+When a check fails:
+
+- The run fails in the Temporal UI (Workflows, `football-ingest-daily` or `football-ingest-<season>`)
+  with a `DataQualityError` whose message names each failed check and its first 10 offending rows.
+  It is not retried: bad data doesn't improve on retry. The worker log has the same message on a
+  `football quality FAILED` line (`make logs-temporal STACK=live`).
+- **The data that run loaded stays loaded.** The check runs after the loads and only reads.
+- **The schedule carries on.** `football-ingest-daily` is not paused by a failed run, so the next
+  day's run loads and checks again; it keeps failing until the data is fixed.
+
+What to do:
+
+1. Read the message and look at the rows it names (SQL in "Checking the data" below).
+2. Compare with the source file, kept in the `football-raw` bucket and on football-data.co.uk.
+   - **Our bug** (a wrong team alias, a parsing or loading mistake): fix it in a PR, release, and
+     re-run the ingest for the affected seasons (`cli run --season <season>`).
+   - **The source is wrong and later corrected**: re-run that season once the file is fixed.
+   - **The source is wrong and stays wrong** (for example one bookmaker's price in an old season):
+     the fix is a decision for the owner. Either add it to `KNOWN_MARGIN_EXCEPTIONS` in a PR
+     (matched on its exact prices, so a later change is checked again), or correct the stored row
+     with a fix-forward migration. Don't widen the limits to make one row pass.
+   - **A completed season is short or has unplayed matches** (an abandoned match, a file not yet
+     final): check the source; if it's genuinely incomplete, it's the owner's call.
+3. Once fixed, start a run by hand (Temporal UI, Schedules, `football-ingest-daily`, **Trigger**) and
+   check that it completes.
+
+Known source error, acknowledged (2026-11-11): Bet365's pre-match 1X2 prices for Aston Villa v
+Arsenal on 18/02/2023 are 4.50/3.60/1.50, a 16.67% margin; every other book had Arsenal at 1.78-1.95.
+The worker logs it on each run as `football quality acknowledged known source error`.
+
 ## Checking the data
 
 ```bash

@@ -2,7 +2,10 @@
 
 For each season, in order: fetch (download + store raw) then load (parse + upsert). Then, if asked,
 the same for ``fixtures.csv`` for the current season. Season files go first so that a match that
-already has a result is never turned back into a fixture.
+already has a result is never turned back into a fixture. Last, the data-quality check (plan step
+1.4, ``football.quality``) checks the whole league; if any check fails, the run fails with a
+``DataQualityError`` naming the offending rows. What was loaded stays loaded, and the daily
+schedule runs again the next day as usual.
 
 WHAT MAY NOT GO IN THIS FILE: HTTP, file or database access, ``datetime.now()``. Temporal replays
 this code; the clock is ``workflow.now()`` and all I/O is in ``activities.py``. Activities are
@@ -15,7 +18,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from .models import (
@@ -31,6 +34,7 @@ with workflow.unsafe.imports_passed_through():
         season_for,
         validate_season,
     )
+    from ..quality.models import QUALITY_ACTIVITY, QUALITY_ERROR_TYPE, QualityReport, QualityRequest
 
 # football-data.co.uk sometimes answers 503 for a while; back off up to ~10 minutes between tries.
 FETCH_RETRY = RetryPolicy(
@@ -48,6 +52,10 @@ LOAD_RETRY = RetryPolicy(
     maximum_attempts=5,
 )
 LOAD_TIMEOUT = timedelta(minutes=5)
+# The check is one read-only database call; retries cover a restarting stack. A failed check is
+# non-retryable and is not retried.
+QUALITY_RETRY = LOAD_RETRY
+QUALITY_TIMEOUT = timedelta(minutes=5)
 
 
 @workflow.defn
@@ -73,7 +81,25 @@ class IngestWorkflow:
             f"odds_updated={summary.total('odds_updated')} prices_dropped={summary.total('prices_dropped')} "
             f"price_sets_nulled={summary.total('price_sets_nulled')}"
         )
+        await self._check_quality(QualityRequest(current_season=current, division=request.division))
         return summary
+
+    async def _check_quality(self, request: QualityRequest) -> QualityReport:
+        try:
+            return await workflow.execute_activity(
+                QUALITY_ACTIVITY,
+                request,
+                result_type=QualityReport,
+                start_to_close_timeout=QUALITY_TIMEOUT,
+                retry_policy=QUALITY_RETRY,
+            )
+        except ActivityError as exc:
+            cause = exc.cause
+            if isinstance(cause, ApplicationError) and cause.type == QUALITY_ERROR_TYPE:
+                # Re-raised at the top level so the Temporal UI shows the check's message as the
+                # run's failure, not a generic "activity task failed".
+                raise ApplicationError(cause.message, type=QUALITY_ERROR_TYPE, non_retryable=True) from exc
+            raise
 
     async def _ingest(self, source: CsvSource) -> LoadResult:
         ref: RawCsvRef = await workflow.execute_activity(
