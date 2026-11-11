@@ -13,6 +13,8 @@ from .activities.agent import build_activities as build_agent_activities
 from .agent import tools as _agent_tools  # noqa: F401
 from .workflows.agent.agent_workflow import AgentWorkflow
 from .workflows.example.approval_workflow import ApprovalWorkflow
+from .football.ingest.activities import build_activities as build_football_ingest_activities
+from .football.ingest.workflow import IngestWorkflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,7 +28,7 @@ async def main() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[ApprovalWorkflow, AgentWorkflow],
+        workflows=[ApprovalWorkflow, AgentWorkflow, IngestWorkflow],
         activities=[
             supabase_core.create_entity,
             supabase_core.update_entity_scd2,
@@ -38,6 +40,8 @@ async def main() -> None:
             # Agent activities are built rather than imported so the tool
             # registry and persistence are injected in one place.
             *build_agent_activities(),
+            # Football ingest (plan step 1.3): download + store raw CSV, parse + upsert.
+            *build_football_ingest_activities(),
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=20,
