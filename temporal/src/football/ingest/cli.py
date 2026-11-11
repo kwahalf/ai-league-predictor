@@ -104,7 +104,7 @@ def _print_summary(summary: IngestSummary) -> None:
         name: summary.total(name)
         for name in (
             "matches_in_file", "matches_inserted", "matches_updated", "stats_inserted", "stats_updated",
-            "odds_inserted", "odds_updated", "odds_deleted", "teams_inserted", "teams_updated",
+            "stats_deleted", "odds_inserted", "odds_updated", "odds_deleted", "teams_inserted", "teams_updated",
             "fixtures_skipped", "stale_skipped", "prices_dropped", "price_sets_nulled",
         )
     }

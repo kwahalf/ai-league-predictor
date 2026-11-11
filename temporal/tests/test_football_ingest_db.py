@@ -168,6 +168,21 @@ def test_a_quote_the_file_no_longer_has_is_deleted(gateway):
     assert _changes(_ingest(gateway, "fixtures", gone, later)) == {}
 
 
+def test_stats_the_file_now_leaves_blank_are_deleted(gateway):
+    base = dict(
+        season=SEASON, match_date=KICKOFF.date(), kickoff_at=KICKOFF, home_team="Arsenal",
+        away_team="Chelsea", home_goals=1, away_goals=1, result="D",
+    )
+    t0 = datetime(2099, 8, 21, 6, 0, tzinfo=timezone.utc)
+    with_stats = _ingest(gateway, "season", MatchRecord(**base, home_shots=9), t0)
+    assert _changes(with_stats) == {"matches_inserted": 1, "stats_inserted": 1}
+    blank = MatchRecord(**base)
+    later = datetime(2099, 8, 22, 6, 0, tzinfo=timezone.utc)
+    assert _changes(_ingest(gateway, "season", blank, later)) == {"stats_deleted": 1}
+    assert _rest(f"match_stats?match_id=eq.{_row()['id']}&select=match_id") == []
+    assert _changes(_ingest(gateway, "season", blank, later)) == {}
+
+
 def test_an_older_download_never_overwrites_a_newer_one(gateway):
     older, newer = (datetime(2099, 8, 18, h, 0, tzinfo=timezone.utc) for h in (6, 7))
     _ingest(gateway, "fixtures", _fixture(2.0), newer)

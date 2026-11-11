@@ -246,7 +246,9 @@ def _fetched(gateway: FakeGateway, name: str, source: CsvSource) -> RawCsvRef:
 
 
 def test_load_season_sends_one_rpc_with_matches_stats_and_odds():
-    gateway = FakeGateway(rpc_result={"matches_inserted": 3, "odds_inserted": 24, "teams_inserted": 6})
+    gateway = FakeGateway(
+        rpc_result={"matches_inserted": 3, "odds_inserted": 24, "teams_inserted": 6, "stats_deleted": 1, "odds_deleted": 2}
+    )
     ref = _fetched(gateway, "E0_2324_sample.csv", CsvSource("season", "2324"))
 
     result = load_csv(gateway, ref)
@@ -267,7 +269,7 @@ def test_load_season_sends_one_rpc_with_matches_stats_and_odds():
 
     assert result == LoadResult(
         kind="season", season="2324", storage_path=ref.storage_path, matches_in_file=3,
-        matches_inserted=3, odds_inserted=24, teams_inserted=6,
+        matches_inserted=3, odds_inserted=24, teams_inserted=6, stats_deleted=1, odds_deleted=2,
     )
 
 

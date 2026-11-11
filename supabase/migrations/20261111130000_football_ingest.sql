@@ -49,7 +49,8 @@ grant all on football_ingest_state to service_role;
 --     off at p_captured_at, so a live price is never captured after kick-off.
 --   * The file is the truth for the odds of each match it covers: a stored quote of the file's
 --     snapshots (pre_match/closing for a season file, live for fixtures.csv) that the file no longer
---     has (absent, or nothing left after cleaning) is deleted.
+--     has (absent, or nothing left after cleaning) is deleted. Likewise a season file that leaves
+--     every statistic of a match blank deletes its stored match_stats row.
 --   * Every update has a WHERE ... IS DISTINCT FROM ... guard: unchanged rows aren't written, so
 --     their updated_at (set by the update_updated_at trigger) doesn't move. odds.captured_at moves
 --     only when a price changes.
@@ -78,6 +79,7 @@ declare
   v_matches_updated int := 0;
   v_stats_inserted int := 0;
   v_stats_updated int := 0;
+  v_stats_deleted int := 0;
   v_odds_inserted int := 0;
   v_odds_updated int := 0;
   v_odds_deleted int := 0;
@@ -233,6 +235,21 @@ begin
     select count(*) filter (where inserted), count(*) filter (where not inserted)
     into v_stats_inserted, v_stats_updated
     from up;
+
+    -- A match whose stats the file now leaves all blank loses its stored stats.
+    with gone as (
+      delete from match_stats ms
+      using jsonb_to_recordset(p_matches) as m(season text, home_team text, away_team text, stats jsonb),
+            teams th, teams ta, matches mt
+      where jsonb_typeof(m.stats) is distinct from 'object'
+        and th.league_id = v_league and th.name = m.home_team
+        and ta.league_id = v_league and ta.name = m.away_team
+        and mt.league_id = v_league and mt.season = m.season
+        and mt.home_team_id = th.id and mt.away_team_id = ta.id
+        and ms.match_id = mt.id
+      returning 1
+    )
+    select count(*) into v_stats_deleted from gone;
   end if;
 
   -- Odds: check sources and snapshots first, so bad input fails loudly instead of being dropped.
@@ -325,6 +342,7 @@ begin
     'matches_updated', v_matches_updated,
     'stats_inserted', v_stats_inserted,
     'stats_updated', v_stats_updated,
+    'stats_deleted', v_stats_deleted,
     'odds_inserted', v_odds_inserted,
     'odds_updated', v_odds_updated,
     'odds_deleted', v_odds_deleted,

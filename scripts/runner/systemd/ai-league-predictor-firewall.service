@@ -2,18 +2,29 @@
 # Runs as root, so it runs a root-owned copy of scripts/runner/restrict-supabase-ports.sh that
 # install-live-units.sh puts in /usr/local/sbin, not the user-writable copy in the checkout.
 # See docs/runbooks/live-setup.md.
+#
+# Runs BEFORE Docker: Docker restarts the stacks' containers itself when it starts (restart:
+# unless-stopped), so the rules must already be in place. Docker keeps an existing DOCKER-USER
+# chain and its rules when it starts, so the unit creates the chain first and fills it.
+# If this unit fails, Docker still starts (other workloads on this shared runner depend on it),
+# but the live unit, which Requires= this one, won't run.
+#
+# No ExecStop: stopping the unit leaves the rules in place, because they also protect the dev
+# stack. Remove them only on purpose, with `ai-league-predictor-restrict-ports remove`.
 [Unit]
 Description=AI League Predictor: block outside access to Supabase ports
-# Docker creates the DOCKER-USER chain when it starts, so run after it.
-After=docker.service
-Requires=docker.service
-Before=ai-league-predictor-live.service
+# The script finds the outside interface from the routing table.
+Wants=network-online.target
+After=network-online.target
+Before=docker.service ai-league-predictor-live.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Create the chain Docker would create, if it isn't there yet ("-": already existing is fine).
+ExecStartPre=-/usr/sbin/iptables -N DOCKER-USER
+ExecStartPre=-/usr/sbin/ip6tables -N DOCKER-USER
 ExecStart=/usr/local/sbin/ai-league-predictor-restrict-ports apply
-ExecStop=/usr/local/sbin/ai-league-predictor-restrict-ports remove
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target docker.service

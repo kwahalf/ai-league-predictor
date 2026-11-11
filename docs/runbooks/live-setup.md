@@ -9,7 +9,7 @@ the plan, "Hosting on the runner": live runs **tagged releases** from a **long-l
 |---|---|
 | Live checkout | `/home/ubuntu/ai-league-predictor-live` (outside Claude session folders), detached at a release tag |
 | Start at boot | `ai-league-predictor-live.service`: `make up STACK=live`, then the ingest schedule |
-| Firewall at boot | `ai-league-predictor-firewall.service`: `restrict-supabase-ports.sh apply` (root-owned copy in `/usr/local/sbin`) |
+| Firewall at boot | `ai-league-predictor-firewall.service`, before Docker: `restrict-supabase-ports.sh apply` (root-owned copy in `/usr/local/sbin`) |
 | Daily ingest | Temporal Schedule `football-ingest-daily`, 06:00 UTC, in the live Temporal (UI on port 8181) |
 | Raw CSVs | Supabase Storage bucket `football-raw` (private), `E0/<season>/<sha256>.csv` and `fixtures/<sha256>.csv` |
 | Ports | `stacks/live.env` (API 55321, Postgres 55322, Studio 55323, Temporal UI 8181, frontend 3100) |
@@ -123,7 +123,8 @@ row in `football_ingest_state` records the newer download time).
 - Live odds (`snapshot = 'live'`) are stored only for matches that are still scheduled and haven't
   kicked off at download time. `captured_at` is the download time, and moves only when a price changes.
 - The file is the truth for the odds of the matches it covers: a stored quote the file no longer has
-  (absent, or nothing left after cleaning) is deleted (`odds_deleted`).
+  (absent, or nothing left after cleaning) is deleted (`odds_deleted`), and so is a match's
+  `match_stats` row when a season file leaves all its statistics blank (`stats_deleted`).
 - Overlapping runs (a manual backfill during the scheduled run) are safe: loads are serialised per
   league, and a download older than the last one loaded for the same file is skipped
   (`stale_skipped`, recorded in `football_ingest_state`), so older prices never overwrite newer ones.
@@ -164,8 +165,12 @@ select name, created_at from storage.objects where bucket_id = 'football-raw' or
 
 ## Notes
 
-- Docker restarts the stack's containers itself at boot (`restart: unless-stopped`), possibly a
-  little before the firewall unit has run; the window is the few seconds between Docker starting and
-  `ai-league-predictor-firewall.service` finishing.
-- The firewall rules cover both stacks' Supabase ports, so the unit also protects dev.
+- Docker restarts the stacks' containers itself when it starts (`restart: unless-stopped`), so the
+  firewall unit runs **before** Docker: it creates Docker's `DOCKER-USER` chain and fills it, and
+  Docker keeps an existing chain's rules. If the firewall unit fails, Docker still starts (other
+  workloads on the runner need it) but the live unit doesn't; check
+  `systemctl status ai-league-predictor-firewall.service` after a reboot.
+- The firewall rules cover both stacks' Supabase ports, so they also protect dev. Stopping the unit
+  leaves them in place on purpose; remove them only deliberately, with
+  `sudo /usr/local/sbin/ai-league-predictor-restrict-ports remove`.
 - Live is never reset. Back it up before every migration (`make migrate` does this itself).

@@ -60,6 +60,9 @@ echo "Live checkout: $previous -> $(git describe --tags --always) ($(git rev-par
 
 # The worker, agent API and frontend images are built from this checkout. `make up` only builds
 # missing images, so rebuild here or a new release would keep running the old code.
-exports="$(./scripts/stack-env.sh live)" && eval "$exports"
+# Two statements, not `a && b`: under `set -e` a failure on the left of `&&` doesn't stop the
+# script, and compose would then build for whatever stack the environment defaults to.
+exports="$(./scripts/stack-env.sh live)"
+eval "$exports"
 docker compose build temporal-worker agent-api frontend
 echo "Images for stack '$STACK_NAME' rebuilt from $tag. Nothing was started or migrated."

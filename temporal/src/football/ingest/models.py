@@ -110,6 +110,8 @@ class LoadResult:
     matches_updated: int = 0
     stats_inserted: int = 0
     stats_updated: int = 0
+    # Stored stats rows of matches whose statistics the file now leaves all blank.
+    stats_deleted: int = 0
     odds_inserted: int = 0
     odds_updated: int = 0
     # Stored quotes the file no longer has (absent, or nothing left after cleaning).

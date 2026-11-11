@@ -10,7 +10,10 @@ set -euo pipefail
 
 stack="${1:-live}"
 cd "$(dirname "$0")/../.."
-exports="$(./scripts/stack-env.sh "$stack")" && eval "$exports"
+# Two statements, not `a && b`: under `set -e` a failure on the left of `&&` doesn't stop the
+# script, and compose would then act on whatever stack the environment defaults to.
+exports="$(./scripts/stack-env.sh "$stack")"
+eval "$exports"
 
 # The worker container can take a moment to connect to Temporal after `make up`; retry briefly.
 for attempt in 1 2 3 4 5 6; do
