@@ -9,7 +9,7 @@
 
 - **One pull request per step** below, merged into `main` in order. Each PR is small enough to review in one sitting and leaves `main` working.
 - **`main` is protected; @kwahalf gives final sign-off and merges every PR.** Nothing is pushed to `main` directly, including changes to this plan and the spec. Copilot reviews first (see "Review process"), but nothing merges automatically.
-- **Every PR passes** the worker test suite (pytest in the worker image), `supabase db reset` (migrations and seed apply cleanly), and `scripts/audit/run_audits.py`. CI runs these on GitHub-hosted machines; local runs happen only in the **dev stack** on the runner, never the live one (see "Hosting on the runner").
+- **Every PR passes** the worker test suite (pytest in the worker image), `supabase db reset` (migrations and seed apply cleanly), and `scripts/audit/run_audits.py`. (From PR 0.1 onwards; see the bootstrap exemption under "Review process".) CI runs these on GitHub-hosted machines; local runs happen only in the **dev stack** on the runner, never the live one (see "Hosting on the runner").
 - **Measure before modelling.** The scoring metrics and the backtest harness land before any model, so every model is judged the day it arrives.
 - **Data first, UI last.** Nothing user-facing is built until the numbers behind it have been backtested.
 
@@ -39,6 +39,10 @@ Notes:
   with branch protection. Final sign-off is always @kwahalf's.
 - This needs Copilot code review enabled for the repository (part of a GitHub Copilot plan). PR 1,
   this plan, is the first run and confirms it works.
+- **Bootstrap exemption:** the spec commit and this plan's PR come before the template, so the CI checks,
+  worker tests and audit script don't exist yet for them. They skip step 1 and the "Every PR passes"
+  gate, but still go through Copilot review and @kwahalf's sign-off. All gates apply from PR 0.1
+  onwards; PR 0.1's own checks run because a PR runs the workflows it adds.
 - This is separate from the template's `pipeline-*` workflows, which have their own automated
   review-and-merge "factory". Those stay disabled in practice (they fail without their tokens), and
   must not be given tokens while this process is in use, or PRs could be merged without @kwahalf.
