@@ -42,3 +42,6 @@ volaris_test_data-main
 *.txt
 # Database backups (make backup)
 backups/
+
+# Backtest season-file cache (python -m src.football.backtest)
+temporal/.cache/
