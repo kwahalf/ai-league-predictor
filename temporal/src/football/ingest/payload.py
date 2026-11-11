@@ -2,7 +2,8 @@
 
 Pure functions, no I/O. Two cleaning rules live here:
 
-- **Prices <= 1.0 are stored as missing** (owner decision 2026-11-11). Decimal odds of 1.0 or less
+- **Prices <= 1.0 are stored as missing** (owner decision 2026-11-11), judged at the database's
+  precision (3 decimal places), so 1.0004, stored as 1.000, counts too. Decimal odds of 1.0 or less
   are impossible, and the real 2021/22 file has Bet365 closing over/under prices of ``0`` for
   Newcastle v Man City on 19/12/2021. Each dropped price is counted so the ingest can log it.
 - **Prices come in complete sets.** The schema requires home/draw/away to be all present or all
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Iterable
 
 from ..data.models import MatchRecord, OddsQuote
@@ -35,6 +37,8 @@ STAT_FIELDS = (
     "home_red_cards",
     "away_red_cards",
 )
+# odds prices are numeric(8, 3) (core migration).
+PRICE_PRECISION = Decimal("0.001")
 ONE_X_TWO = ("home", "draw", "away")
 OVER_UNDER = ("over_2_5", "under_2_5")
 
@@ -54,13 +58,20 @@ class CleanedQuote:
         return all(value is None for value in self.prices.values())
 
 
+def _stored(price: float) -> Decimal:
+    """``price`` as Postgres stores it in ``numeric(8, 3)``: JSON sends ``repr(price)``, which
+    Postgres rounds half away from zero to 3 places. So 1.0004 is stored as 1.000 and must count as
+    <= 1.0, or the ``> 1.0`` constraint would reject the whole file."""
+    return Decimal(repr(price)).quantize(PRICE_PRECISION, rounding=ROUND_HALF_UP)
+
+
 def clean_quote(quote: OddsQuote) -> CleanedQuote:
     """Apply the two cleaning rules (module docstring) to one quote."""
     prices: dict[str, float | None] = {}
     dropped = 0
     for name in ONE_X_TWO + OVER_UNDER:
         value = getattr(quote, name)
-        if value is not None and value <= 1.0:
+        if value is not None and _stored(value) <= 1:
             value = None
             dropped += 1
         prices[name] = value

@@ -69,7 +69,7 @@ volumes.
 8. **Backfill** 2016/17 to the current season, then `fixtures.csv` (takes under a minute):
    ```bash
    cd /home/ubuntu/ai-league-predictor-live
-   sg docker -c 'eval "$(./scripts/stack-env.sh live)" && docker compose exec -T temporal-worker python -m src.football.ingest.cli backfill'
+   sg docker -c 'exports="$(./scripts/stack-env.sh live)" && eval "$exports" && docker compose exec -T temporal-worker python -m src.football.ingest.cli backfill'
    ```
    It prints one line per file and a totals line. Expect 380 matches for each season 1617 to 2526,
    the current season's played matches, and `prices_dropped: 2` (2021/22, see below).
@@ -99,7 +99,9 @@ release whose migration must be undone needs its own fix-forward migration.
 ## Running the ingest
 
 All commands run inside the worker container of the stack you mean. Load that stack's settings first
-(`eval "$(./scripts/stack-env.sh dev)"` or `live`) so `docker compose` picks the right containers.
+(`exports="$(./scripts/stack-env.sh dev)" && eval "$exports"`, or `live`) so `docker compose` picks
+the right containers. Keep the separate `exports=` assignment: a bare `eval "$(…)"` succeeds on empty
+output, and compose would then act on whatever stack the shell already had.
 
 | Command | Does |
 |---|---|
@@ -107,7 +109,7 @@ All commands run inside the worker container of the stack you mean. Load that st
 | `python -m src.football.ingest.cli run [--season 2627]` | One season (default: current), then `fixtures.csv` |
 | `python -m src.football.ingest.cli schedule` | Creates `football-ingest-daily`, or updates it in place. Never creates a second one |
 
-For example, on dev: `sg docker -c 'eval "$(./scripts/stack-env.sh dev)" && docker compose exec -T temporal-worker python -m src.football.ingest.cli backfill'`.
+For example, on dev: `sg docker -c 'exports="$(./scripts/stack-env.sh dev)" && eval "$exports" && docker compose exec -T temporal-worker python -m src.football.ingest.cli backfill'`.
 
 The scheduled run can also be started by hand from the Temporal UI: Schedules,
 `football-ingest-daily`, **Trigger**. Each run is an `IngestWorkflow` with its own history.

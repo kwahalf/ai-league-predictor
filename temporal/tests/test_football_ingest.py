@@ -131,6 +131,14 @@ def test_exactly_one_is_dropped_but_just_above_is_kept():
     assert cleaned.is_empty
 
 
+@pytest.mark.parametrize("price, dropped", [(1.0004, True), (1.0005, False), (1.001, False), (0.9999, True)])
+def test_prices_are_judged_at_the_database_precision(price, dropped):
+    # odds columns are numeric(8, 3): 1.0004 would be stored as 1.000 and break the > 1.0 check.
+    cleaned = clean_quote(_quote(over_2_5=price, under_2_5=2.0))
+    assert cleaned.prices_dropped == (1 if dropped else 0)
+    assert (cleaned.prices["over_2_5"] is None) == dropped
+
+
 def test_incomplete_set_from_the_source_is_nulled_without_touching_the_other_set():
     cleaned = clean_quote(_quote(home=2.0, draw=3.0, away=None, over_2_5=1.9, under_2_5=1.95))
     assert cleaned.prices_dropped == 0
