@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from ..data import MatchRecord, parse_season_csv
+from ..models.elo import EloModel
 from .harness import DEFAULT_WARMUP_SEASONS, run_backtest
 from .model import Model
 from .report import format_report
@@ -34,6 +35,7 @@ SEASON_URL = "https://www.football-data.co.uk/mmz4281/{season}/E0.csv"
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[3] / ".cache" / "football-data"
 
 MODELS: dict[str, Callable[[], Model]] = {
+    "elo": EloModel,
     "trivial": TrivialModel,
 }
 """Models the CLI can run, by name. Later steps register theirs here."""
