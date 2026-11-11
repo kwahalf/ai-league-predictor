@@ -172,6 +172,14 @@ def test_bucket_edges_are_lower_inclusive(k):
     assert bucket_index(k / 10) == min(k, 9)
 
 
+@pytest.mark.parametrize("n_buckets", [5, 20, 100])
+def test_bucket_edges_for_other_bucket_counts(n_buckets):
+    # e.g. 0.29 * 100 = 28.999999999999996, but 0.29 is the lower edge of bucket 29
+    for k in range(n_buckets + 1):
+        assert bucket_index(k / n_buckets, n_buckets) == min(k, n_buckets - 1)
+    assert bucket_index(0.29, 100) == 29
+
+
 def test_calibration_rejects_bad_bucket_count():
     with pytest.raises(MetricsError, match="n_buckets"):
         calibration_buckets([], n_buckets=0)
@@ -273,6 +281,9 @@ def test_consensus_errors():
         consensus([(0.5, 0.3, 0.2), (0.5, 0.5)])
     with pytest.raises(MetricsError, match="one entry per source"):
         consensus([(0.5, 0.3, 0.2)], weights=(1, 1))
+    for bad in [(None, 1), ("bad", 1)]:
+        with pytest.raises(MetricsError, match="weights must be a sequence of numbers"):
+            consensus([(0.5, 0.3, 0.2), (0.4, 0.3, 0.3)], weights=bad)
     with pytest.raises(MetricsError, match="non-negative"):
         consensus([(0.5, 0.3, 0.2), (0.4, 0.3, 0.3)], weights=(1, -1))
     with pytest.raises(MetricsError, match="all zero"):

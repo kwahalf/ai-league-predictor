@@ -30,8 +30,17 @@ class CalibrationBucket:
 
 
 def bucket_index(p: float, n_buckets: int = 10) -> int:
-    """Index of the bucket that probability ``p`` falls in (1.0 goes in the last bucket)."""
-    return min(int(math.floor(p * n_buckets)), n_buckets - 1)
+    """Index of the bucket that probability ``p`` falls in (1.0 goes in the last bucket).
+
+    ``p * n_buckets`` can round across an edge (``0.29 * 100`` is ``28.999...``), so the candidate
+    is corrected against the same ``b / n_buckets`` edges that ``calibration_buckets`` reports.
+    """
+    b = int(math.floor(p * n_buckets))
+    if b + 1 < n_buckets and (b + 1) / n_buckets <= p:
+        b += 1
+    elif b > 0 and b / n_buckets > p:
+        b -= 1
+    return max(0, min(b, n_buckets - 1))
 
 
 def calibration_buckets(

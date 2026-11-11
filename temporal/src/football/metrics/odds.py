@@ -62,7 +62,10 @@ def consensus(
     if weights is None:
         weights = [1.0] * len(sources)
     else:
-        weights = [float(w) for w in weights]
+        try:
+            weights = [float(w) for w in weights]
+        except (TypeError, ValueError) as exc:
+            raise MetricsError(f"weights must be a sequence of numbers, got {weights!r}") from exc
         if len(weights) != len(sources):
             raise MetricsError(
                 f"weights must have one entry per source: {len(weights)} weights, "
