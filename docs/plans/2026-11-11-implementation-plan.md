@@ -189,6 +189,7 @@ of work is set by real dependencies below, not by step numbers.
 | 3.1 | 2.1b |
 | 3.2, 3.3, 3.4 | 3.1 |
 | 3.5 | 3.2, 3.4 |
+| **Release of milestone 3 to live** | 2.7, 3.5, and the 4-gameweek comparison passed |
 | Milestone 4 tracks | milestone 3 shipped and 10 live gameweeks scored |
 
 ```mermaid
@@ -214,6 +215,8 @@ flowchart LR
   spot --> s26
   s26 --> s27[2.7 predict and score]
   s27 --> silent{{4 silent gameweeks}}
+  silent --> rel[[release pages and agent to live]]
+  s35 --> rel
   s21b --> s31[3.1 views + fixtures page]
   s31 --> s32[3.2 match page]
   s31 --> s33[3.3 performance page]
@@ -227,8 +230,10 @@ What this unlocks:
   (2.2) and the models (2.3, 2.4, 2.5) don't touch the database: the backtest reads the parsed CSV
   files directly. Models are developed while ingestion is still being built.
 - **Elo (2.3) and Dixon–Coles (2.4) are built at the same time** on top of the harness.
-- **The UI starts early.** Pages (3.1–3.4) are built against the views with sample rows as soon as the
-  model tables exist (2.1b), instead of waiting for real predictions.
+- **The UI starts early, in dev only.** Pages (3.1–3.4) are built against the views with sample rows as
+  soon as the model tables exist (2.1b), instead of waiting for real predictions. The sample rows live
+  in a dev-only seed, never in a migration, so they can't reach the live database. Merging a page to
+  `main` doesn't put it in front of anyone: live only gets milestone 3 at the release gate below.
 - **Milestone 4's three tracks run in parallel.**
 - **The spot check moves:** it gates step 2.6 (when a real model version is recorded from the
   database), not the start of modelling.
@@ -286,6 +291,11 @@ steps where they first matter:
 - **Live is never reset.** New migrations reach live with `supabase migration up`, which only applies
   what's new, and only after a fresh backup. A migration that would drop or rewrite stored predictions
   needs @kwahalf's explicit sign-off in its PR.
+- **Live runs tagged releases, not the latest `main`.** The live checkout is pinned to a release tag
+  (for example `v0.1`), and moving it to a newer tag is a deliberate step after @kwahalf's sign-off.
+  Merged work, including early UI, reaches live only through a release. Milestone 3 (pages and agent)
+  is released to live only after step 2.7 and a successful 4-gameweek comparison of live RPS against
+  the backtest.
 - **Run live from a stable checkout, not a session folder.** Session workspaces aren't guaranteed to
   last. Before the first schedule goes live (step 1.3), the live stack moves to a long-lived clone of
   the repo outside the session directories.
