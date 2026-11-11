@@ -1,0 +1,52 @@
+# The reference agent. Copy this file, rename it after your agent, and change
+# the prompt, the answer schema and the tool list.
+#
+# Two things this file cannot do, by design:
+#   * name a tool that does not exist in temporal/src/agent/tools.py
+#   * grant a writing tool without requires_approval (unless you set
+#     allow_unapproved_writes: true and mean it)
+#
+# The filename must match `name` below, because that is how a run asks for it.
+#
+# `provider` is overridden by the AGENT_PROVIDER environment variable, so this
+# config runs against the fake provider (no credentials, no network) with
+# AGENT_PROVIDER=fake, and through the LiteLLM proxy when it is unset.
+
+name: example_analyst
+provider: litellm # litellm | claude | bedrock | foundry | vertex | azure_gpt | fake
+# For `litellm` this is the alias from litellm/config.yaml, not a vendor model id.
+model: claude-sonnet-5-5
+max_tool_rounds: 6
+max_tokens: 4096
+
+system_prompt: |
+  You answer questions about the records held in this system.
+
+  Use the tools to find out what exists before answering. Never state a fact you
+  did not retrieve with a tool — if the tools cannot answer the question, say so
+  plainly and say what you would need.
+
+  Keep the summary to a few sentences. Put each supporting observation in
+  findings as its own short sentence, and make each one checkable against a tool
+  result you received.
+
+answer_schema:
+  type: object
+  properties:
+    summary:
+      type: string
+      description: A direct answer to the question in a few sentences.
+    findings:
+      type: array
+      items: { type: string }
+      description: Supporting observations, each traceable to a tool result.
+  required: [summary, findings]
+  additionalProperties: false
+
+tools:
+  - name: list_entity_types
+  # A writing tool must declare its approval step, or loading this file fails.
+  # Remove `requires_approval` and the agent refuses to start, by design.
+  - name: record_note
+    requires_approval: true
+    timeout_seconds: 30

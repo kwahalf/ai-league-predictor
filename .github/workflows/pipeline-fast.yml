@@ -1,0 +1,171 @@
+name: Pipeline — Fast
+
+# Staged cadence pipeline per ADR-0025.
+# Runs a SINGLE pass per scheduled invocation (no long-running loop) — one
+# triage → review → merge sweep, then exits. Scheduled frequently; GitHub may
+# throttle short crons under load, which is an accepted trade ("a little slower
+# but much smoother") in exchange for short, predictable runs.
+# Regression contract is enforced by temporal/tests/test_pipeline_fast_workflow_contract.py.
+#
+# TIMER-ONLY DESIGN (2026-06-08): The `workflow_run` trigger that previously fired
+# on PR Validation / Build Images completion has been intentionally removed. It was
+# added in PR #657 to improve responsiveness, but caused self-cancellation thrash:
+# 69% of runs were cancelled before completing, starving the PR review queue.
+# The full sweep (triage → PR loop → specialist lanes) now runs on every scheduled
+# pass. If responsiveness degrades, shorten the cron interval (e.g. `*/10`) — do
+# NOT reintroduce event-driven triggering. See issue #704 for the full rationale.
+#
+# Stage order (one pass):
+#   1. enrich-triage   — Product Owner   (labels/triages new issues and PRs)
+#   2. pr-pipeline     — per-PR agentic loop (run-pr-pipeline.ts): snapshots every
+#                        open PR ONCE, then runs a fresh focused `pr-handler` agent
+#                        per PR OLDEST-FIRST (review → approve/request-changes →
+#                        merge), then a short Project Manager assignment pass. This
+#                        replaces the old monolithic `tech-review` + `merge-assign`
+#                        stages, which looped over all PRs in one ballooning session
+#                        and were killed mid-sweep before merging.
+#   3-5. conditional  — DB Steward / Security Reviewer / Platform Engineer
+#                        (only when a matching labelled PR/issue exists)
+#
+# Stage 1 and the specialist stages use a per-stage `timeout` + continue-on-failure.
+# The PR pipeline self-budgets per-PR (each PR is a separate short session), so it is
+# given a generous backstop rather than the tight per-agent cap. Outcomes go to
+# $GITHUB_STEP_SUMMARY.
+#
+# This pipeline is the SOLE cadence driver for these agents. The former per-agent
+# workflows (agent-*.yml) were retired and deleted; agents run only as stages here
+# (and in the hourly/daily pipelines).
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # every ~15 min (single pass); GitHub may run it less often under load
+  workflow_dispatch:
+
+concurrency:
+  # Single serialising group — timer-only trigger means no cross-branch storms.
+  # cancel-in-progress: false so scheduled runs queue behind an in-flight pass
+  # rather than cancelling it.
+  group: pipeline-fast
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    # Hard 1-hour self-terminate: guarantees a stuck run cannot block the next
+    # scheduled timer tick. Covers worst case (Product Owner + full PR budget
+    # + all three specialist lanes) with headroom to spare.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: .github/tools/shared/package-lock.json
+
+      - name: Install shared runtime
+        run: npm ci
+        working-directory: .github/tools/shared
+
+      - name: Fast pipeline pass (single sweep)
+        working-directory: .github/tools/shared
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          FACTORY_CONFIG_PATH: ${{ github.workspace }}/.github/factory.yml
+          AGENTS_PATH: ${{ github.workspace }}/.github/agents
+          # Per-PR loop budgets (minutes). The loop self-limits; the backstop
+          # `timeout` below and the job `timeout-minutes` are outer guards.
+          PR_PIPELINE_BUDGET_MIN: '20'
+          PR_HANDLER_TIMEOUT_MIN: '10'
+          ASSIGN_TIMEOUT_MIN: '5'
+        run: |
+          set -uo pipefail
+
+          # Single pass — one triage → review → merge sweep per scheduled run.
+          # Per-stage timeout (s). SDK default idle-timeout is ~300 s; small buffer
+          # so a hung stage exits cleanly rather than blocking the pass.
+          STAGE_TIMEOUT=330
+
+          {
+            echo "## Fast pipeline pass — $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo ""
+            echo "| Stage | Status |"
+            echo "|-------|--------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # run_stage <display-name> <agent-name> — run one agent with a hard timeout;
+          # on failure warn and continue (one stuck stage must not block the rest).
+          run_stage() {
+            local display_name="$1"
+            local agent_name="$2"
+            local outcome="✅ ok"
+            echo "::group::Stage: $display_name"
+            if ! timeout "$STAGE_TIMEOUT" npx tsx src/run-agent.ts --agent "$agent_name"; then
+              outcome="⚠️ failed/timeout"
+              echo "::warning::Stage '$display_name' (agent: $agent_name) failed or timed out — continuing pipeline"
+            fi
+            echo "::endgroup::"
+            echo "| $display_name | $outcome |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          # run_pr_pipeline — the per-PR agentic loop (review + merge + assign).
+          # NOT a per-agent run_stage: it self-budgets one short session PER PR
+          # (oldest-first), so it gets a generous backstop instead of the tight
+          # STAGE_TIMEOUT. No shell looping here — the per-PR loop lives in
+          # run-pr-pipeline.ts; this stays a single-sweep shell invocation.
+          run_pr_pipeline() {
+            local outcome="✅ ok"
+            echo "::group::Stage: pr-pipeline (per-PR review+merge loop)"
+            if ! timeout 1500 npx tsx src/run-pr-pipeline.ts; then
+              outcome="⚠️ failed/timeout"
+              echo "::warning::Stage 'pr-pipeline' failed or timed out — continuing pipeline"
+            fi
+            echo "::endgroup::"
+            echo "| pr-pipeline (per-PR review+merge loop) | $outcome |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          # labeled_work_exists <pr-label> [<issue-label>] — true if any open PR/issue
+          # carries the label (keeps specialist stages off unless there's work for them).
+          labeled_work_exists() {
+            local pr_label="${1:-}"
+            local issue_label="${2:-}"
+            if [ -n "$pr_label" ] && [ "$(gh pr list --label "$pr_label" --state open --json number --jq 'length' 2>/dev/null || echo 0)" -gt 0 ]; then return 0; fi
+            if [ -n "$issue_label" ] && [ "$(gh issue list --label "$issue_label" --state open --json number --jq 'length' 2>/dev/null || echo 0)" -gt 0 ]; then return 0; fi
+            return 1
+          }
+
+          # ── Stage 1: Enrich / triage ──────────────────────────────────────────
+          run_stage "enrich-triage (Product Owner)" "product-owner"
+
+          # ── Stage 2: Per-PR review + merge + assign (agentic loop, oldest-first) ─
+          run_pr_pipeline
+
+          # ── Stage 3: DB Steward (conditional) ─────────────────────────────────
+          if labeled_work_exists "needs-database-review" "queue:database"; then
+            run_stage "db-steward (Database Steward)" "database-steward"
+          fi
+
+          # ── Stage 4: Security Reviewer (conditional) ──────────────────────────
+          if labeled_work_exists "needs-security-review" "queue:security"; then
+            run_stage "security-review (Security Reviewer)" "security-reviewer"
+          fi
+
+          # ── Stage 5: Platform Engineer (conditional) ──────────────────────────
+          if labeled_work_exists "needs-platform-review" "queue:platform"; then
+            run_stage "platform (Platform Engineer)" "platform-engineer"
+          fi

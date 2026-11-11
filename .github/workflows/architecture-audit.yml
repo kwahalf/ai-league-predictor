@@ -1,0 +1,49 @@
+name: Architecture Audit
+
+# Standing whole-repo audits that catch defect classes the per-PR review agents
+# structurally cannot see: cross-file wiring (Temporal registration), holistic
+# security posture (pull_request_target+secrets), and behavior-vs-existence
+# (views bypassing RLS). Report-only (non-gating) — surfaces a worklist without
+# blocking merges, mirroring the non-gating experience-suite precedent. The
+# Security Reviewer and Tech Reviewer agents consult this run's findings.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # daily 06:00 UTC
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    paths:
+      - 'temporal/src/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/**'
+      - 'scripts/audit/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Whole-repo architecture audit (report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run architecture audits
+        # Report mode: always exit 0 so this never blocks a merge. Findings are
+        # written to the job summary as the reviewers' worklist. Promote
+        # individual checks to `--strict` once their tracking issues close.
+        run: python scripts/audit/run_audits.py
+
+      - name: Verify audit tooling (unit tests)
+        run: |
+          pip install pytest >/dev/null
+          python -m pytest temporal/tests/test_architecture_audit.py -q -p no:cacheprovider

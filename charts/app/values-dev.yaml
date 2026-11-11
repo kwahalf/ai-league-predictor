@@ -1,0 +1,93 @@
+# Development profile for charts/app
+# Intended namespace: <DEV_NAMESPACE> (use: helm install/upgrade ... -n <DEV_NAMESPACE>)
+# Live on <AKS_CLUSTER_NONPROD> / <DEV_NAMESPACE>. imageRegistry + image tags are set at
+# deploy time (deploy-dev.yml --set ...); the rest reflects the validated live config.
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: "frontend"
+    tag: "dev-latest"
+    # Digest is set at deploy time (deploy-dev.yml --set frontend.image.digest=sha256:...).
+    # When a digest is available the image is pulled as repo@sha256:… ensuring the exact
+    # built bits are deployed; the tag is kept for display/audit only.
+    digest: ""
+    pullPolicy: Always
+  imagePullSecrets:
+    - name: acr-pull
+  # Browser-accessible dev: expose the frontend via a cloud LoadBalancer (own
+  # public IP). The cluster has no nginx ingress class (Istio only), so this is
+  # the simplest isolated entry point for nonprod testing.
+  service:
+    type: LoadBalancer
+    port: 80
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi      # Vite dev server is memory-hungry; 384Mi OOMKilled it
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  env:
+    # Browser traffic must use the public HTTPS Supabase endpoint so the app
+    # avoids mixed-content blocking when served over HTTPS.
+    supabaseUrl: "<SUPABASE_URL>"
+    apiUrl: "<SUPABASE_URL>/functions/v1"
+  secrets:
+    supabaseAnonKey:
+      secretName: "frontend-secrets-<DEV_NAMESPACE>"
+      key: "VITE_SUPABASE_ANON_KEY"
+
+temporalWorker:
+  replicaCount: 1
+  image:
+    repository: "temporal-worker"
+    tag: "dev-latest"
+    # Digest is set at deploy time (deploy-dev.yml --set temporalWorker.image.digest=sha256:...).
+    digest: ""
+    pullPolicy: Always
+  imagePullSecrets:
+    - name: acr-pull
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 384Mi
+  temporal:
+    # Points at the Temporal server already running in this cluster's `dev` namespace
+    # (no NetworkPolicy, so cross-namespace resolution works). Replace with a
+    # dedicated Temporal/Temporal Cloud endpoint when one exists.
+    address: "temporal-frontend.dev.svc.cluster.local:7233"
+    namespace: "default"
+    taskQueue: "<DEV_NAMESPACE>-main"
+  supabase:
+    # Worker runs in-cluster → use the internal Kong service (service-role calls).
+    url: "http://supabase-supabase-kong.<SUPABASE_NAMESPACE>.svc.cluster.local"
+  secrets:
+    supabaseServiceRoleKey:
+      secretName: "temporal-worker-secrets-<DEV_NAMESPACE>"
+      key: "SUPABASE_SERVICE_ROLE_KEY"
+
+opsApi:
+  replicaCount: 1
+  image:
+    repository: "temporal-worker"
+    tag: "dev-latest"
+    # Digest is set at deploy time (deploy-dev.yml --set opsApi.image.digest=sha256:...).
+    digest: ""
+    pullPolicy: Always
+  imagePullSecrets:
+    - name: acr-pull
+  temporal:
+    address: "temporal-frontend.dev.svc.cluster.local:7233"
+    namespace: "default"
+  supabase:
+    url: "http://supabase-supabase-kong.<SUPABASE_NAMESPACE>.svc.cluster.local"
+  secrets:
+    supabaseServiceRoleKey:
+      secretName: "temporal-worker-secrets-<DEV_NAMESPACE>"
+      key: "SUPABASE_SERVICE_ROLE_KEY"

@@ -1,0 +1,172 @@
+name: volaris-template-london
+
+# The full local Supabase stack (API/Kong, Auth, Storage, Studio, Postgres) is
+# run by the Supabase CLI via `supabase start`, NOT by this compose file --
+# `make up` starts it first. Services below reach it on the host:
+#   browser/frontend      -> http://localhost:54321
+#   in-container worker   -> http://host.docker.internal:54321
+
+services:
+  temporal-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - temporal-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.21.3
+    restart: unless-stopped
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-db
+      - TEMPORAL_CLI_ADDRESS=localhost:7233
+    ports:
+      - "127.0.0.1:7234:7233"
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  temporal-ui:
+    image: temporalio/ui:2.21.2
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8080}:8080"
+
+  temporal-worker:
+    build: ./temporal
+    networks: [default, supabase]
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    # Reach the host-bound Supabase API from inside the container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-main}
+      - SUPABASE_URL=${SUPABASE_URL:-http://host.docker.internal:54321}
+      - SMTP_HOST=${SMTP_HOST:-inbucket}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+      - SMTP_FROM=${SMTP_FROM:-template@localhost}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-false}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-dev-service-role-key}
+      # Agent: AGENT_PROVIDER overrides every agent config, so `fake` runs the
+      # whole loop with no credentials. Unset it to use each agent's own provider.
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_OPENAI_BASE_URL=${AZURE_OPENAI_BASE_URL:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-}
+      # `deployments` (default, works on every Azure resource) or `v1`.
+      - AZURE_OPENAI_API_STYLE=${AZURE_OPENAI_API_STYLE:-}
+      # Only needed when the deployment is not named after the model.
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-}
+      # LiteLLM proxy (provider: litellm). The compose service below serves
+      # this address under `--profile litellm`.
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://litellm:4000}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-}
+
+  # Starts agent runs and relays human decisions. Same image as the worker: it
+  # shares the agent configs, the tool registry and the run store, and a second
+  # image would only be a second thing to keep in step.
+  agent-api:
+    build: ./temporal
+    command: ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks: [default, supabase]
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - TEMPORAL_ADDRESS=${TEMPORAL_ADDRESS:-temporal:7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-main}
+      - SUPABASE_URL=${SUPABASE_URL:-http://host.docker.internal:54321}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-dev-service-role-key}
+      - AGENT_API_ALLOWED_ORIGINS=${AGENT_API_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL:-http://localhost:54321}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-dev-anon-key}
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:54321/functions/v1}
+      - VITE_AGENT_API_URL=${VITE_AGENT_API_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  # LiteLLM proxy -- OPT-IN, so `make up` does not start it:
+  #
+  #     docker compose --profile litellm up -d litellm
+  #
+  # One endpoint in front of many models. Worth running when several people share
+  # one upstream key and each needs their own spend cap and rate limit: the proxy
+  # holds the real credentials and issues virtual keys, and the worker only ever
+  # sees the proxy. Which models it serves is `litellm/config.yaml`, not this file.
+  litellm:
+    profiles: ["litellm"]
+    image: ghcr.io/berriai/litellm:main-stable
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    environment:
+      # Set this to require auth and to mint virtual keys. Left empty, the proxy
+      # accepts unauthenticated calls, which is fine for a first local run.
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+      # Upstream credentials live here so the worker never holds them.
+      - AZURE_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_API_BASE=${AZURE_OPENAI_BASE_URL:-}
+      - AZURE_API_VERSION=${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    ports:
+      - "127.0.0.1:4000:4000"
+
+volumes:
+  temporal-db-data:
+
+networks:
+  supabase:
+    external: true
+    name: supabase_network_volaris-template-london

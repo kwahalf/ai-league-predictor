@@ -1,0 +1,158 @@
+{
+  "id": "dashboard",
+  "title": "Dashboard",
+  "state": {},
+  "layout": {
+    "type": "Stack",
+    "props": { "spacing": 6 },
+    "children": [
+      {
+        "type": "Stack",
+        "props": { "spacing": 1 },
+        "children": [
+          {
+            "type": "Heading",
+            "props": { "level": 1, "children": "Dashboard" }
+          },
+          {
+            "type": "Text",
+            "props": {
+              "variant": "muted",
+              "children": "Welcome to the JSON-driven UI Engine"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Grid",
+        "props": { "columns": 3, "gap": 4 },
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "title": "Portfolios",
+              "description": "Manage investment portfolios"
+            },
+            "children": [
+              {
+                "type": "Stack",
+                "props": { "spacing": 2 },
+                "children": [
+                  {
+                    "type": "Text",
+                    "props": {
+                      "children": "Create and manage portfolios using JSON-driven forms."
+                    }
+                  },
+                  {
+                    "type": "Link",
+                    "props": {
+                      "to": "/entities/portfolio",
+                      "children": "View Portfolios"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "JSON UI Engine",
+              "description": "Zero-code UI changes"
+            },
+            "children": [
+              {
+                "type": "Text",
+                "props": {
+                  "children": "This entire UI is rendered from JSON page definitions. Edit JSON, not code."
+                }
+              }
+            ]
+          },
+          {
+            "type": "Card",
+            "props": {
+              "title": "Built with",
+              "description": "Modern stack"
+            },
+            "children": [
+              {
+                "type": "Stack",
+                "props": { "spacing": 1 },
+                "children": [
+                  {
+                    "type": "Badge",
+                    "props": { "children": "React 18" }
+                  },
+                  {
+                    "type": "Badge",
+                    "props": { "variant": "secondary", "children": "TanStack Router" }
+                  },
+                  {
+                    "type": "Badge",
+                    "props": { "variant": "outline", "children": "Supabase" }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "How It Works"
+        },
+        "children": [
+          {
+            "type": "Stack",
+            "props": { "spacing": 4 },
+            "children": [
+              {
+                "type": "Text",
+                "props": {
+                  "children": "Pages are defined as JSON files with the following structure:"
+                }
+              },
+              {
+                "type": "Stack",
+                "props": { "spacing": 2 },
+                "children": [
+                  {
+                    "type": "Text",
+                    "props": {
+                      "weight": "semibold",
+                      "children": "1. State - Initial page state values"
+                    }
+                  },
+                  {
+                    "type": "Text",
+                    "props": {
+                      "weight": "semibold",
+                      "children": "2. Data Sources - Supabase queries to fetch data"
+                    }
+                  },
+                  {
+                    "type": "Text",
+                    "props": {
+                      "weight": "semibold",
+                      "children": "3. Layout - Component tree with props and children"
+                    }
+                  },
+                  {
+                    "type": "Text",
+                    "props": {
+                      "weight": "semibold",
+                      "children": "4. Actions - Declarative actions (setState, navigate, apiCall)"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

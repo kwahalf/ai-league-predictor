@@ -1,0 +1,1 @@
+-- Empty seed for template; add initial data per-project.

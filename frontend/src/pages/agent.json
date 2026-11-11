@@ -1,0 +1,356 @@
+{
+  "id": "agent",
+  "title": "Agent",
+  "state": {
+    "question": "",
+    "agent": "example_analyst"
+  },
+  "dataSources": {
+    "run": {
+      "type": "supabase",
+      "table": "agent_runs",
+      "select": "id,agent,question,status,answer,error,created_at",
+      "filters": [{ "field": "id", "op": "eq", "value": "{{params.runId}}" }],
+      "single": true,
+      "enabled": "{{params.runId}}",
+      "refetchInterval": 1500,
+      "refetchWhile": "{{result.status !== 'completed'}}"
+    },
+    "messages": {
+      "type": "supabase",
+      "table": "agent_messages",
+      "select": "seq,role,tool_name,tokens_in,tokens_out,content::text",
+      "filters": [{ "field": "run_id", "op": "eq", "value": "{{params.runId}}" }],
+      "order": [{ "column": "seq", "ascending": true }],
+      "enabled": "{{params.runId}}",
+      "refetchInterval": 1500
+    },
+    "approvals": {
+      "type": "supabase",
+      "table": "agent_approvals",
+      "select": "tool_call_id,tool_name,arguments::text,status",
+      "filters": [
+        { "field": "run_id", "op": "eq", "value": "{{params.runId}}" },
+        { "field": "status", "op": "eq", "value": "pending" }
+      ],
+      "enabled": "{{params.runId}}",
+      "refetchInterval": 1500
+    },
+    "recentRuns": {
+      "type": "supabase",
+      "table": "agent_runs",
+      "select": "id,agent,question,status,created_at",
+      "order": [{ "column": "created_at", "ascending": false }],
+      "limit": 8
+    }
+  },
+  "layout": {
+    "type": "Stack",
+    "props": { "spacing": 6 },
+    "children": [
+      {
+        "type": "Stack",
+        "props": { "spacing": 1 },
+        "children": [
+          { "type": "Heading", "props": { "level": 1, "children": "Agent" } },
+          {
+            "type": "Text",
+            "props": {
+              "variant": "muted",
+              "children": "Ask a question. The agent chooses its own tools, and pauses for approval before anything that writes."
+            }
+          }
+        ]
+      },
+
+      {
+        "type": "Card",
+        "children": [
+          {
+            "type": "Stack",
+            "props": { "spacing": 4 },
+            "children": [
+              {
+                "type": "Input",
+                "props": {
+                  "label": "Question",
+                  "name": "question",
+                  "placeholder": "What kinds of records exist?",
+                  "value": "{{state.question}}",
+                  "onChange": {
+                    "action": "setState",
+                    "key": "question",
+                    "value": "{{event.target.value}}"
+                  }
+                }
+              },
+              {
+                "type": "Stack",
+                "props": { "direction": "horizontal", "spacing": 2, "align": "center" },
+                "children": [
+                  {
+                    "type": "Button",
+                    "props": {
+                      "children": "Ask the agent",
+                      "disabled": "{{!state.question}}",
+                      "onClick": {
+                        "action": "custom",
+                        "handler": "startAgentRun",
+                        "payload": {
+                          "agent": "{{state.agent}}",
+                          "question": "{{state.question}}"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "Text",
+                    "props": {
+                      "variant": "muted",
+                      "size": "sm",
+                      "children": "Agent: {{state.agent}}"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "type": "Card",
+        "if": "{{params.runId}}",
+        "props": { "title": "This run" },
+        "children": [
+          {
+            "type": "Stack",
+            "props": { "spacing": 3 },
+            "children": [
+              {
+                "type": "Stack",
+                "props": { "direction": "horizontal", "spacing": 2, "align": "center" },
+                "children": [
+                  {
+                    "type": "Badge",
+                    "props": {
+                      "variant": "secondary",
+                      "children": "{{data.run.status || 'starting'}}"
+                    }
+                  },
+                  {
+                    "type": "Text",
+                    "props": { "weight": "medium", "children": "{{data.run.question}}" }
+                  }
+                ]
+              },
+              {
+                "type": "Alert",
+                "if": "{{data.run.error}}",
+                "props": {
+                  "variant": "destructive",
+                  "title": "This run failed",
+                  "description": "{{data.run.error}}"
+                }
+              },
+              {
+                "type": "Text",
+                "if": "{{data.run.answer}}",
+                "props": { "children": "{{data.run.answer.summary}}" }
+              },
+              {
+                "type": "Text",
+                "each": "{{data.run.answer.findings}}",
+                "as": "finding",
+                "props": {
+                  "variant": "muted",
+                  "size": "sm",
+                  "children": "— {{finding}}"
+                }
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "type": "Card",
+        "if": "{{data.approvals && data.approvals.length > 0}}",
+        "props": { "title": "Waiting for you" },
+        "children": [
+          {
+            "type": "Stack",
+            "each": "{{data.approvals}}",
+            "as": "approval",
+            "key": "{{approval.tool_call_id}}",
+            "props": { "spacing": 3, "className": "p-4 border rounded-lg" },
+            "children": [
+              {
+                "type": "Alert",
+                "props": {
+                  "variant": "destructive",
+                  "title": "The agent wants to run {{approval.tool_name}}",
+                  "description": "Arguments: {{approval.arguments}}"
+                }
+              },
+              {
+                "type": "Stack",
+                "props": { "direction": "horizontal", "spacing": 2, "justify": "end" },
+                "children": [
+                  {
+                    "type": "Button",
+                    "props": {
+                      "variant": "outline",
+                      "children": "Reject",
+                      "onClick": {
+                        "action": "custom",
+                        "handler": "decideToolCall",
+                        "payload": {
+                          "tool_call_id": "{{approval.tool_call_id}}",
+                          "approved": false
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "Button",
+                    "props": {
+                      "children": "Approve",
+                      "onClick": {
+                        "action": "custom",
+                        "handler": "decideToolCall",
+                        "payload": {
+                          "tool_call_id": "{{approval.tool_call_id}}",
+                          "approved": true
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "type": "Card",
+        "if": "{{params.runId}}",
+        "props": { "title": "What the agent did" },
+        "children": [
+          {
+            "type": "Stack",
+            "props": { "spacing": 2 },
+            "children": [
+              {
+                "type": "Stack",
+                "each": "{{data.messages}}",
+                "as": "message",
+                "key": "{{message.seq}}",
+                "props": { "spacing": 1, "className": "p-3 border rounded-lg" },
+                "children": [
+                  {
+                    "type": "Stack",
+                    "props": { "direction": "horizontal", "spacing": 2, "align": "center" },
+                    "children": [
+                      {
+                        "type": "Badge",
+                        "props": { "variant": "secondary", "children": "{{message.role}}" }
+                      },
+                      {
+                        "type": "Text",
+                        "if": "{{message.tool_name}}",
+                        "props": {
+                          "size": "sm",
+                          "weight": "medium",
+                          "children": "{{message.tool_name}}"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Text",
+                    "props": {
+                      "variant": "muted",
+                      "size": "sm",
+                      "className": "font-mono break-all",
+                      "children": "{{message.content}}"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Text",
+                "if": "{{!data.messages || data.messages.length === 0}}",
+                "props": { "variant": "muted", "children": "Waiting for the first turn…" }
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "type": "Card",
+        "props": { "title": "Recent runs" },
+        "children": [
+          {
+            "type": "Stack",
+            "props": { "spacing": 2 },
+            "children": [
+              {
+                "type": "Stack",
+                "each": "{{data.recentRuns}}",
+                "as": "recent",
+                "key": "{{recent.id}}",
+                "props": {
+                  "direction": "horizontal",
+                  "justify": "between",
+                  "align": "center",
+                  "className": "p-3 border rounded-lg"
+                },
+                "children": [
+                  {
+                    "type": "Stack",
+                    "props": { "spacing": 1 },
+                    "children": [
+                      {
+                        "type": "Text",
+                        "props": { "weight": "medium", "children": "{{recent.question}}" }
+                      },
+                      {
+                        "type": "Text",
+                        "props": {
+                          "variant": "muted",
+                          "size": "sm",
+                          "children": "{{recent.agent}} · {{recent.status}}"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Button",
+                    "props": {
+                      "variant": "outline",
+                      "size": "sm",
+                      "children": "Open",
+                      "onClick": {
+                        "action": "custom",
+                        "handler": "selectRun",
+                        "payload": { "run_id": "{{recent.id}}" }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Text",
+                "if": "{{!data.recentRuns || data.recentRuns.length === 0}}",
+                "props": { "variant": "muted", "children": "No runs yet." }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

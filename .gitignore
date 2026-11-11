@@ -1,0 +1,42 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+.env.temporal
+.env.temporal.local
+!.env.temporal.example
+.npm-cache
+
+# Logs and temp
+*.log
+logs/
+.npm-cache/
+
+# Supabase local state
+supabase/.branches
+supabase/.temp
+supabase/.env
+
+# Python
+__pycache__/
+*.pyc
+
+# OS/editor
+.DS_Store
+
+# Node tooling
+node_modules
+temporal/worker/node_modules
+temporal/worker/dist
+temporal/worker/node_modules.bak*
+**/node_modules.bak*
+*.swp
+
+volaris_test_data-main
+
+*.txt

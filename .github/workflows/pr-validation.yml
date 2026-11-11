@@ -1,0 +1,344 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  shared-tools:
+    name: Shared tools regression suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: .github/tools/shared/package-lock.json
+
+      - name: Install shared runtime deps
+        run: npm ci
+        working-directory: .github/tools/shared
+
+      - name: Run shared Vitest regression suite
+        run: npm test
+        working-directory: .github/tools/shared
+
+  frontend:
+    name: Frontend lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+
+      # Run the unit suite with the JSON reporter so the result can be charted on the
+      # ci-history branch. A red suite MUST fail CI — we no longer swallow failures into
+      # a "skipped" message (that hid breakage the same way #57/#58 did for Temporal).
+      # We only genuinely skip when there is no `test` script at all (template portability).
+      - name: Unit tests (vitest, JSON report for trend history)
+        working-directory: frontend
+        run: |
+          if [ -z "$(node -p "require('./package.json').scripts.test || ''" 2>/dev/null)" ]; then
+            echo "## ℹ️ Frontend tests skipped — no test script configured" >> "$GITHUB_STEP_SUMMARY"
+          else
+            npx vitest run --reporter=default --reporter=json --outputFile=vitest-results.json
+          fi
+
+      - name: Upload unit results (trend history)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-results
+          path: frontend/vitest-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  temporal:
+    name: Temporal worker tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+          # Authenticate the "resolve latest release" API call. Without this the
+          # action hits the unauthenticated GitHub API limit (60/hr/IP), which
+          # shared CI runners exhaust under high PR volume — failing the install
+          # with "Failed to resolve latest Supabase CLI release: rate limit
+          # exceeded" and reddening main. A token raises the limit to 1000/hr.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install
+        run: pip install -e ".[dev]"
+        working-directory: temporal
+
+      - name: Test Temporal suite
+        # Skip ONLY when there are genuinely no tests (template portability).
+        # When tests exist, a red suite MUST fail CI — the previous
+        # `2>/dev/null || skipped` hack hid a broken `main` (see #57/#58).
+        # --json-report emits temporal/pytest-report.json for the ci-history trend.
+        run: |
+          if [ -z "$(find temporal/tests -name 'test_*.py' -print -quit 2>/dev/null)" ]; then
+            echo "## ℹ️ Temporal tests skipped — no test files present" >> "$GITHUB_STEP_SUMMARY"
+          else
+            python -m pytest temporal/tests -v \
+              --json-report --json-report-file=temporal/pytest-report.json
+          fi
+        env:
+          REQUIRE_SUPABASE_RESET_VALIDATION: '1'
+
+      - name: Upload temporal results (trend history)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-results
+          path: temporal/pytest-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  helm-charts:
+    name: Helm chart lint & profile tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Lint and render all profiles
+        env:
+          # Tells ci-test.sh to drop a machine-readable summary for the ci-history trend.
+          CI_HISTORY_JSON: ${{ github.workspace }}/helm-results.json
+        run: bash charts/app/ci-test.sh
+
+      - name: Frontend entrypoint runtime-contract tests
+        run: bash frontend/docker/test-entrypoint.sh
+
+      - name: Upload helm results (trend history)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-results
+          path: helm-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  supabase-seed:
+    name: Supabase demo-baseline seed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run demo baseline seed validation
+        id: seed
+        run: bash supabase/tests/run_demo_baseline_seed.sh
+
+      - name: Record seed outcome (trend history)
+        if: always()
+        run: |
+          out=passed
+          [ "${{ steps.seed.outcome }}" = "success" ] || out=failed
+          printf '{"outcome":"%s"}\n' "$out" > seed-results.json
+
+      - name: Upload seed results (trend history)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-results
+          path: seed-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+  supabase-rpc-guards:
+    name: Supabase direct-DB write-RPC guard contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run direct-DB write-RPC guard contract tests
+        run: bash supabase/tests/run_direct_db_write_rpc_guards.sh
+
+  supabase-seed-demo-users:
+    name: Supabase seed-demo-users integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run seed-demo-users integration tests
+        run: bash supabase/tests/run_seed_demo_users.sh
+
+  validation-summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [shared-tools, frontend, temporal, helm-charts, supabase-seed, supabase-rpc-guards, supabase-seed-demo-users]
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "## PR Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Shared tools regression suite | ${{ needs.shared-tools.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Frontend lint, build & unit tests | ${{ needs.frontend.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Temporal tests | ${{ needs.temporal.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Helm chart profile tests | ${{ needs.helm-charts.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Supabase demo-baseline seed | ${{ needs.supabase-seed.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Supabase direct-DB write-RPC guard contracts | ${{ needs.supabase-rpc-guards.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Supabase seed-demo-users tests | ${{ needs.supabase-seed-demo-users.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build-over-build trends for these suites: [\`ci-history\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/ci-history) branch." >> "$GITHUB_STEP_SUMMARY"
+
+  publish-test-history:
+    name: Append CI test results to ci-history + render dashboard
+    needs: [frontend, temporal, helm-charts, supabase-seed]
+    # Record build-over-build health of the merged trunk only: publish on pushes to
+    # main (i.e. after a merge), not on every PR commit. PR runs still gate and still
+    # upload per-suite artifacts — they just don't pollute the long-term trend, and we
+    # avoid needing write access on (potentially fork) pull_request events.
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Check out main only to get the record/render scripts.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Per-suite results, each uploaded by the jobs above with if: always(). Any may be
+      # absent if a runner died before writing it; the record script degrades to an
+      # "error" record rather than failing.
+      - name: Download unit results
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-results
+          path: artifacts/unit
+        continue-on-error: true
+      - name: Download temporal results
+        uses: actions/download-artifact@v4
+        with:
+          name: temporal-results
+          path: artifacts/temporal
+        continue-on-error: true
+      - name: Download helm results
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-results
+          path: artifacts/helm
+        continue-on-error: true
+      - name: Download seed results
+        uses: actions/download-artifact@v4
+        with:
+          name: seed-results
+          path: artifacts/seed
+        continue-on-error: true
+
+      - name: Append records + render, then push to ci-history
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH=ci-history
+          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          REC=.github/scripts/test-history-record.mjs
+
+          # Build this run's new record lines from whatever artifacts arrived.
+          : > new-records.jsonl
+          if [ -f artifacts/unit/vitest-results.json ]; then
+            node "$REC" --suite unit --format vitest --results artifacts/unit/vitest-results.json >> new-records.jsonl
+          fi
+          if [ -f artifacts/temporal/pytest-report.json ]; then
+            node "$REC" --suite temporal --format pytest-json --results artifacts/temporal/pytest-report.json >> new-records.jsonl
+          fi
+          if [ -f artifacts/helm/helm-results.json ]; then
+            node "$REC" --suite helm --format generic --results artifacts/helm/helm-results.json >> new-records.jsonl
+          fi
+          if [ -f artifacts/seed/seed-results.json ]; then
+            node "$REC" --suite seed --format generic --results artifacts/seed/seed-results.json >> new-records.jsonl
+          fi
+          if [ ! -s new-records.jsonl ]; then
+            echo "No results to record (all artifacts missing) — nothing to publish."
+            exit 0
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Push with a fetch/rebase-of-the-file retry loop so concurrent runs can't
+          # clobber each other's appends to runs.jsonl.
+          for attempt in 1 2 3 4 5; do
+            rm -rf hist && mkdir hist && cd hist
+            git init -q
+            git remote add origin "$REPO_URL"
+            if git fetch -q --depth 1 origin "$BRANCH"; then
+              git checkout -q -b "$BRANCH" FETCH_HEAD
+            else
+              git checkout -q --orphan "$BRANCH"
+            fi
+            cat ../new-records.jsonl >> runs.jsonl
+            node ../.github/scripts/test-history-render.mjs .
+            git add -A
+            git commit -q -m "ci: record test run ${GITHUB_RUN_ID} ($(wc -l < ../new-records.jsonl | tr -d ' ') suite result(s))"
+            if git push -q origin "$BRANCH"; then
+              echo "Published to $BRANCH (attempt $attempt)."
+              cd ..
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt) — likely a concurrent update; retrying."
+            cd ..
+          done
+          echo "Failed to publish after retries." >&2
+          exit 1
+
+      - name: Link in job summary
+        if: always()
+        run: |
+          {
+            echo "## CI test trend history"
+            echo "Dashboard: browse the [\`ci-history\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/tree/ci-history) branch (README renders the charts)."
+            echo "Raw feed: \`runs.jsonl\` on that branch."
+          } >> "$GITHUB_STEP_SUMMARY"
