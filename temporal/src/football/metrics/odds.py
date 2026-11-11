@@ -83,9 +83,10 @@ def consensus(
         raise MetricsError(f"all sources must have the same number of outcomes, got {sources!r}")
     if any(not math.isfinite(w) or w < 0.0 for _, w in present):
         raise MetricsError(f"weights must be finite and non-negative, got {weights!r}")
-    total_weight = math.fsum(w for _, w in present)
-    if total_weight <= 0.0:
+    max_weight = max(w for _, w in present)
+    if max_weight <= 0.0:
         raise MetricsError("the weights of the sources that priced this match are all zero")
-    return tuple(
-        math.fsum(p[i] * w for p, w in present) / total_weight for i in range(n)
-    )
+    # Scale by the largest weight first, so tiny or huge weights can't underflow or overflow.
+    scaled = [(p, w / max_weight) for p, w in present]
+    total_weight = math.fsum(w for _, w in scaled)
+    return tuple(math.fsum(p[i] * w for p, w in scaled) / total_weight for i in range(n))

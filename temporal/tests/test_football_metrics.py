@@ -180,6 +180,25 @@ def test_bucket_edges_for_other_bucket_counts(n_buckets):
     assert bucket_index(0.29, 100) == 29
 
 
+@pytest.mark.parametrize(
+    "p, n_buckets, match",
+    [
+        (-0.1, 10, r"\[0, 1\]"),
+        (1.1, 10, r"\[0, 1\]"),
+        (float("nan"), 10, "finite"),
+        (math.inf, 10, "finite"),
+        ("0.5", 10, "finite"),
+        (True, 10, "finite"),
+        (0.5, 0, "n_buckets"),
+        (0.5, True, "n_buckets"),
+        (0.5, 2.0, "n_buckets"),
+    ],
+)
+def test_bucket_index_rejects_bad_input(p, n_buckets, match):
+    with pytest.raises(MetricsError, match=match):
+        bucket_index(p, n_buckets)
+
+
 def test_calibration_rejects_bad_bucket_count():
     with pytest.raises(MetricsError, match="n_buckets"):
         calibration_buckets([], n_buckets=0)
@@ -258,6 +277,13 @@ def test_consensus_weights_renormalised_over_present_sources():
     # home: (0.5*3 + 0.4*1)/4 = 0.475; draw: 0.3; away: (0.2*3 + 0.3*1)/4 = 0.225
     result = consensus([(0.5, 0.3, 0.2), None, (0.4, 0.3, 0.3)], weights=(3, 5, 1))
     assert result == pytest.approx((0.475, 0.3, 0.225))
+
+
+@pytest.mark.parametrize("w", [5e-324, 1e308])
+def test_consensus_extreme_equal_weights_match_equal_weights(w):
+    # Equal weights give the plain average however small or large they are
+    result = consensus([(0.5, 0.3, 0.2), (0.4, 0.3, 0.3)], weights=(w, w))
+    assert result == pytest.approx((0.45, 0.3, 0.25))
 
 
 def test_consensus_of_real_odds():

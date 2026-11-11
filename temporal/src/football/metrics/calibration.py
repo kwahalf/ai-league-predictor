@@ -29,12 +29,22 @@ class CalibrationBucket:
     """Share of the bucket's forecasts whose outcome happened; None when the bucket is empty."""
 
 
+def _check_n_buckets(n_buckets: int) -> None:
+    if isinstance(n_buckets, bool) or not isinstance(n_buckets, int) or n_buckets < 1:
+        raise MetricsError(f"n_buckets must be a positive int, got {n_buckets!r}")
+
+
 def bucket_index(p: float, n_buckets: int = 10) -> int:
     """Index of the bucket that probability ``p`` falls in (1.0 goes in the last bucket).
 
     ``p * n_buckets`` can round across an edge (``0.29 * 100`` is ``28.999...``), so the candidate
     is corrected against the same ``b / n_buckets`` edges that ``calibration_buckets`` reports.
     """
+    _check_n_buckets(n_buckets)
+    if isinstance(p, bool) or not isinstance(p, (int, float)) or not math.isfinite(p):
+        raise MetricsError(f"p must be a finite number, got {p!r}")
+    if not 0.0 <= p <= 1.0:
+        raise MetricsError(f"p must be in [0, 1], got {p!r}")
     b = int(math.floor(p * n_buckets))
     if b + 1 < n_buckets and (b + 1) / n_buckets <= p:
         b += 1
@@ -51,8 +61,7 @@ def calibration_buckets(
     Returns all buckets in order, including empty ones (count 0, means None), so the result always
     has ``n_buckets`` entries.
     """
-    if isinstance(n_buckets, bool) or not isinstance(n_buckets, int) or n_buckets < 1:
-        raise MetricsError(f"n_buckets must be a positive int, got {n_buckets!r}")
+    _check_n_buckets(n_buckets)
     sums = [0.0] * n_buckets
     hits = [0] * n_buckets
     counts = [0] * n_buckets
