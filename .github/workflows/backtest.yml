@@ -1,0 +1,87 @@
+# Full walk-forward backtest of a match model (plan, "Rules for running agents in parallel":
+# heavy backtests run in CI, not on the runner).
+#
+# - Manually: Actions > Backtest > Run workflow, with the model name (a key of cli.MODELS).
+# - On pull requests that change a model or the harness: runs `dixon_coles` and `trivial`.
+#
+# Each job downloads the public football-data.co.uk season files, runs
+# `python -m src.football.backtest --model <model>` from temporal/, and writes the report to the
+# job summary and as an artifact. No secrets are used.
+
+name: Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model to backtest (a key of MODELS in temporal/src/football/backtest/cli.py)
+        required: true
+        default: dixon_coles
+        type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - 'temporal/src/football/models/**'
+      - 'temporal/src/football/backtest/**'
+      - '.github/workflows/backtest.yml'
+
+concurrency:
+  group: backtest-${{ github.ref }}-${{ github.event_name }}-${{ inputs.model || 'pr' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  backtest:
+    name: Backtest (${{ matrix.model }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('[{0}]', toJSON(inputs.model)) || '["dixon_coles", "trivial"]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install worker package
+        run: pip install -e ".[dev]"
+        working-directory: temporal
+
+      - name: Run backtest
+        working-directory: temporal
+        env:
+          MODEL: ${{ matrix.model }}
+        run: |
+          set -o pipefail
+          start=$(date +%s)
+          python -m src.football.backtest --model "$MODEL" | tee "backtest-$MODEL.report"
+          echo "elapsed_seconds=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
+
+      - name: Write job summary
+        working-directory: temporal
+        env:
+          MODEL: ${{ matrix.model }}
+        run: |
+          {
+            echo "## Backtest: \`$MODEL\` (${elapsed_seconds}s)"
+            echo
+            echo '```'
+            cat "backtest-$MODEL.report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-${{ matrix.model }}
+          path: temporal/backtest-${{ matrix.model }}.report
+          retention-days: 30
