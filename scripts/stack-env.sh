@@ -9,6 +9,10 @@
 set -euo pipefail
 
 stack="${1:-dev}"
+# Only plain stack names: no paths, so `./live` or `../x` can't sneak past name checks.
+case "$stack" in
+  *[!a-z0-9-]*|"") echo "stack-env.sh: invalid stack name '$stack' (use a plain name such as dev or live)" >&2; exit 1 ;;
+esac
 here="$(cd "$(dirname "$0")/.." && pwd)"
 file="$here/stacks/$stack.env"
 

@@ -1,5 +1,8 @@
 export DOCKER_BUILDKIT=0
 
+# bash, not sh: recipes rely on `pipefail` so a failure anywhere in a pipeline stops the target.
+SHELL := /bin/bash
+
 # Which stack to act on: dev (default) or live. Each has its own Supabase project ID,
 # Compose project and ports (stacks/<stack>.env), so the two never share containers,
 # ports or volumes. See "Hosting on the runner" in docs/plans/.
@@ -18,7 +21,9 @@ endif
 COMPOSE_CMD=docker compose $(foreach file,$(COMPOSE_FILES),-f $(file))
 
 # Prefix for every recipe line: loads the stack's settings into the environment.
-STACK_ENV=eval "$$(./scripts/stack-env.sh $(STACK))" &&
+# The assignment carries stack-env.sh's exit status, so an unknown stack stops the recipe
+# instead of running it against whatever settings happen to be in the environment.
+STACK_ENV=exports="$$(./scripts/stack-env.sh $(STACK))" && eval "$$exports" &&
 
 BACKUP_DIR?=backups
 
@@ -39,8 +44,9 @@ down:
 # Full wipe: tear down compose volumes AND the Supabase stack (incl. its DB),
 # then recreate everything from scratch (migrations + seed re-applied).
 # Dev only: live holds the prediction track record, which can't be recreated.
+# Fails closed: anything other than exactly `dev` is refused before any destructive command.
 reset:
-	@if [ "$(STACK)" = "live" ]; then echo "make reset refuses to run on live: it would erase the stored predictions. Use 'make migrate STACK=live' for new migrations." >&2; exit 1; fi
+	@if [ "$(STACK)" != "dev" ]; then echo "make reset only runs on the dev stack (got STACK=$(STACK)): it would erase that stack's data. For live, use 'make migrate STACK=live'." >&2; exit 1; fi
 	@$(STACK_ENV) $(COMPOSE_CMD) down -v
 	-@$(STACK_ENV) supabase stop --no-backup
 	$(MAKE) up STACK=$(STACK)
@@ -53,9 +59,10 @@ migrate: backup
 # Dump the stack's database to $(BACKUP_DIR)/<stack>-<UTC timestamp>.sql.gz
 backup:
 	@mkdir -p $(BACKUP_DIR)
-	@$(STACK_ENV) out="$(BACKUP_DIR)/$$STACK_NAME-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz" && \
-		docker exec "supabase_db_$$SUPABASE_PROJECT_ID" pg_dump -U postgres postgres | gzip > "$$out" && \
-		echo "Backup written to $$out"
+	@set -o pipefail; $(STACK_ENV) out="$(BACKUP_DIR)/$$STACK_NAME-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz" && \
+		if docker exec "supabase_db_$$SUPABASE_PROJECT_ID" pg_dump -U postgres postgres | gzip > "$$out" && \
+			[ "$$(gzip -dc "$$out" | head -c 1 | wc -c)" -eq 1 ]; then echo "Backup written to $$out"; \
+		else rm -f "$$out"; echo "Backup FAILED for stack $$STACK_NAME: nothing was changed." >&2; exit 1; fi
 
 logs:
 	@$(STACK_ENV) $(COMPOSE_CMD) logs -f

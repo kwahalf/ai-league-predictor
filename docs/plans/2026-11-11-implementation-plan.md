@@ -92,10 +92,10 @@ Steps 3.1–3.3 and 3.4 can be built in parallel once 3.1's views exist.
 
 | # | PR | Size | Contents | Done when |
 |---|---|---|---|---|
-| 3.1 | Views and fixtures page | M | `v_upcoming_predictions`, `v_match_detail`, `v_model_performance` (with `security_invoker`); fixtures page as JSON forms under `frontend/forms/football/`. | Fixtures page shows the next 14 days with edge badges |
+| 3.1 | Views and fixtures page | M | `v_upcoming_predictions`, `v_match_detail`, `v_model_performance` (with `security_invoker`); fixtures page as JSON forms under `frontend/forms/football/`. Fix the template's layout engine first: `Grid` and `Stack` build Tailwind classes at runtime (`grid-cols-${n}`, `gap-${n}`), which Tailwind never generates, so numeric columns and gaps are lost; set them as inline styles (found by Copilot in PR 0.1). | Fixtures page shows the next 14 days with edge badges |
 | 3.2 | Match detail page | M | Probability bars (headline and fundamentals), scoreline heat map, goal markets, odds table, form, strengths, head-to-head. | All match-page acceptance criteria in the spec pass |
 | 3.3 | Performance page | M | RPS over time and calibration, for all layers and sources, filterable by season and model version. | Numbers match `v_model_performance` |
-| 3.4 | Agent tools and `match_analyst` | M | The six read-only tools in `temporal/src/agent/tools.py`; `temporal/agents/match_analyst.yaml` on `claude-sonnet-5-5`. | Config loads under `AGENT_PROVIDER=fake`; a real run explains a fixture citing only tool figures |
+| 3.4 | Agent tools and `match_analyst` | M | The six read-only tools in `temporal/src/agent/tools.py`; `temporal/agents/match_analyst.yaml` on `claude-sonnet-5-5`. Also fix or retire the template's example tools (found by Copilot in PR 0.1): `list_entity_types` reads one capped page (1,000 rows) and miscounts beyond it; `record_note` creates a duplicate note if its activity is retried, because it doesn't pass a stable `p_entity_id`. The new tools must not repeat either mistake. | Config loads under `AGENT_PROVIDER=fake`; a real run explains a fixture citing only tool figures |
 | 3.5 | "Explain this prediction" | S | Button on the match page that starts a `match_analyst` run for that match. | 20-explanation faithfulness spot check passes |
 
 ## Milestone 4: Extensions (spec phase 4)
@@ -264,6 +264,14 @@ against about 31 if every step ran one after another, before review waiting time
 If more parallelism is wanted later, agents can run as separate cloud Claude sessions instead of on
 this runner, testing through CI. Then the limits are review time and the one-migration rule, not the
 runner.
+
+## Known template issues
+
+Found in review and not tied to a step, because this project doesn't use the code yet:
+
+- **Azure GPT `v1` style:** `temporal/src/agent/llm/azure_gpt.py` sends the dated default
+  `api-version` to the `/openai/v1` endpoint, which rejects dated versions. Fix before anyone sets
+  `AGENT_PROVIDER=azure_gpt` with `AZURE_OPENAI_API_STYLE=v1`. This project uses LiteLLM.
 
 ## Decisions
 
