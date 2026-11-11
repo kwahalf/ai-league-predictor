@@ -234,31 +234,53 @@ class OrderedLogit:
 
     def probabilities(self, x: float) -> Probabilities:
         """(p_home, p_draw, p_away) for rating difference ``x``."""
-        f_away = _sigmoid(self.cut_away - self.slope * x)
-        f_away_or_draw = _sigmoid(self.cut_draw - self.slope * x)
-        p_away = f_away
-        p_draw = max(f_away_or_draw - f_away, 0.0)
-        p_home = max(1.0 - f_away_or_draw, 0.0)
+        cuts = (self.cut_away, self.cut_draw)
+        p_away, p_draw, p_home = (_cell(k, cuts, self.slope, x)[0] for k in range(3))
         total = p_home + p_draw + p_away
         return (p_home / total, p_draw / total, p_away / total)
 
 
-DEFAULT_LOGIT = OrderedLogit(cut_away=-0.45, cut_draw=0.67, slope=2.75)
-"""Used when the history is too small or degenerate to fit (fewer than ``min_fit_matches``
-matches, an outcome never seen, or no convergence). Rounded from a fit on all ten Premier League
-seasons 2016/17-2025/26 with the default ``EloParams``: about 44% home, 27% draw, 30% away between
-equal teams. The backtest never uses it: its first window already has a full season of history."""
+def _cell(
+    k: int, cuts: Sequence[float], slope: float, x: float
+) -> tuple[float, float, float, float, float]:
+    """Probability of category ``k`` (0 away, 1 draw, 2 home) and the logistic CDF at its upper
+    and lower bounds, each with its complement: ``(p, F(u), 1-F(u), F(l), 1-F(l))``.
 
-_TINY = 1e-300
+    Complements are computed directly (``1 - F(z) = F(-z)``), and ``p`` as a difference of
+    complements when both bounds are in the upper tail, so tail probabilities don't round to 0."""
+    if k < 2:
+        u = cuts[k] - slope * x
+        f_u, g_u = _sigmoid(u), _sigmoid(-u)
+    else:
+        f_u, g_u = 1.0, 0.0
+    if k > 0:
+        lo = cuts[k - 1] - slope * x
+        f_l, g_l = _sigmoid(lo), _sigmoid(-lo)
+    else:
+        f_l, g_l = 0.0, 1.0
+    p = f_u - f_l if f_l < 0.5 else g_l - g_u
+    return p, f_u, g_u, f_l, g_l
+
+
+DEFAULT_LOGIT = OrderedLogit(cut_away=-0.60, cut_draw=0.55, slope=2.30)
+"""Used when the history is too small or degenerate to fit (fewer than ``min_fit_matches``
+matches, an outcome never seen, or no convergence). Chosen without looking at any results, so it
+can't carry information from later seasons into a prediction: the slope is ``ln 10`` (2.30), the
+logistic slope of the Elo expected score itself, and the cut-points reproduce the trivial model's
+base rates (45% home, 27% draw, 28% away) between equal teams at the default home advantage
+(``x = 0.15``). The backtest never uses it: its first window already has a full season of
+history."""
 
 
 def _log_likelihood(theta: Sequence[float], xs: Sequence[float], ks: Sequence[int]) -> float:
-    c1, c2, b = theta
+    """Log-likelihood, or ``-inf`` if any observed outcome has probability 0 under ``theta``."""
+    cuts, b = (theta[0], theta[1]), theta[2]
     total = 0.0
     for x, k in zip(xs, ks):
-        upper = 1.0 if k == 2 else _sigmoid((c1 if k == 0 else c2) - b * x)
-        lower = 0.0 if k == 0 else _sigmoid((c1 if k == 1 else c2) - b * x)
-        total += math.log(max(upper - lower, _TINY))
+        p = _cell(k, cuts, b, x)[0]
+        if not p > 0.0:
+            return -math.inf
+        total += math.log(p)
     return total
 
 
@@ -269,28 +291,28 @@ def _gradient_hessian(
 
     For one match, ``log p = log(F(u) - F(l))`` with ``u`` the upper and ``l`` the lower linear
     predictor (``c_k - b*x``; +inf/-inf at the ends). Derivatives in ``u`` and ``l`` are chained
-    through ``du/dtheta`` and ``dl/dtheta``, each 1 on its cut-point and ``-x`` on ``b``."""
-    c1, c2, b = theta
-    cuts = (c1, c2)
+    through ``du/dtheta`` and ``dl/dtheta``, each 1 on its cut-point and ``-x`` on ``b``.
+    Raises ``OrderedLogitError`` if an observed outcome's probability underflows to 0, where the
+    derivatives would be meaningless."""
+    cuts, b = (theta[0], theta[1]), theta[2]
     g = [0.0, 0.0, 0.0]
     h = [[0.0] * 3 for _ in range(3)]
     for x, k in zip(xs, ks):
-        has_upper, has_lower = k < 2, k > 0
-        f_u = _sigmoid(cuts[k] - b * x) if has_upper else 1.0
-        f_l = _sigmoid(cuts[k - 1] - b * x) if has_lower else 0.0
-        p = max(f_u - f_l, _TINY)
-        d_u = f_u * (1.0 - f_u)  # logistic density at u (0 at +inf)
-        d_l = f_l * (1.0 - f_l)
+        p, f_u, c_u, f_l, c_l = _cell(k, cuts, b, x)
+        if not p > 0.0:
+            raise OrderedLogitError("an observed outcome has probability 0 at these parameters")
+        d_u = f_u * c_u  # logistic density at u (0 at +inf)
+        d_l = f_l * c_l  # and at l (0 at -inf)
         g_u = d_u / p
         g_l = -d_l / p
-        h_uu = d_u * (1.0 - 2.0 * f_u) / p - g_u * g_u
-        h_ll = -d_l * (1.0 - 2.0 * f_l) / p - g_l * g_l
+        h_uu = d_u * (c_u - f_u) / p - g_u * g_u  # density derivative: f(z) * (1 - 2F(z))
+        h_ll = -d_l * (c_l - f_l) / p - g_l * g_l
         h_ul = -g_u * g_l
-        du = [0.0, 0.0, -x] if has_upper else [0.0, 0.0, 0.0]
-        dl = [0.0, 0.0, -x] if has_lower else [0.0, 0.0, 0.0]
-        if has_upper:
+        du = [0.0, 0.0, -x] if k < 2 else [0.0, 0.0, 0.0]
+        dl = [0.0, 0.0, -x] if k > 0 else [0.0, 0.0, 0.0]
+        if k < 2:
             du[k] = 1.0
-        if has_lower:
+        if k > 0:
             dl[k - 1] = 1.0
         for i in range(3):
             g[i] += g_u * du[i] + g_l * dl[i]
@@ -352,6 +374,8 @@ def fit_ordered_logit(
     else:
         theta = [start.cut_away, start.cut_draw, start.slope]
     ll = _log_likelihood(theta, xs, ks)
+    if not math.isfinite(ll):
+        raise OrderedLogitError("an observed outcome has probability 0 at the starting point")
     for _ in range(max_iter):
         g, h = _gradient_hessian(theta, xs, ks)
         step = _solve3(h, g)  # Newton: theta - H^-1 g (H is negative definite)

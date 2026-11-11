@@ -163,6 +163,27 @@ def test_ordered_logit_is_a_maximum() -> None:
         assert ll(nudged) < best
 
 
+def test_ordered_logit_bad_warm_start_still_finds_the_maximum() -> None:
+    # A wildly wrong warm start puts the observed upsets far in the tails (F rounds to 1.0 in
+    # double precision); tail probabilities must stay positive so their gradient still counts.
+    xs, results = sample_ordered_logit(OrderedLogit(-0.5, 0.6, 2.5), 5000, seed=9)
+    cold = fit_ordered_logit(xs, results)
+    bad = OrderedLogit(cut_away=-0.5, cut_draw=0.6, slope=-60.0)
+    assert bad.probabilities(1.0)[0] > 0.0  # about 5e-27, not rounded to zero
+    warm = fit_ordered_logit(xs, results, start=bad)
+    assert warm.cut_away == pytest.approx(cold.cut_away, abs=1e-6)
+    assert warm.cut_draw == pytest.approx(cold.cut_draw, abs=1e-6)
+    assert warm.slope == pytest.approx(cold.slope, abs=1e-6)
+
+
+def test_default_logit_is_data_free_prior() -> None:
+    # Slope ln 10 (the Elo expected score's own logistic slope); trivial-model base rates between
+    # equal teams at the default home advantage.
+    assert DEFAULT_LOGIT.slope == pytest.approx(math.log(10), abs=0.01)
+    home, draw, away = DEFAULT_LOGIT.probabilities(EloParams().home_advantage / 400)
+    assert (home, draw, away) == pytest.approx((0.45, 0.27, 0.28), abs=0.005)
+
+
 def test_ordered_logit_degenerate_data_rejected() -> None:
     with pytest.raises(OrderedLogitError):  # no draws: the maximum doesn't exist
         fit_ordered_logit([0.1, -0.2, 0.3], ["H", "A", "H"])
