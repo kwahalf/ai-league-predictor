@@ -81,5 +81,5 @@ def mean_log_loss(predictions: Iterable[Prediction]) -> float:
 
 
 def mean_brier(predictions: Iterable[Prediction]) -> float:
-    """Mean Brier score over ``(probs, outcome)`` pairs. Raises ``MetricsError`` if there are none."""
+    """Mean Brier over ``(probs, outcome)`` pairs. Raises ``MetricsError`` if there are none."""
     return _mean(brier, predictions)
