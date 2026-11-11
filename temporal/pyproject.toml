@@ -22,6 +22,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Makes `src` importable however pytest is invoked (CI runs it from the repo root).
+pythonpath = ["."]
 asyncio_mode = "auto"
 
 [build-system]
