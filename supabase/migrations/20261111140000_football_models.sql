@@ -308,10 +308,11 @@ $$;
 --   p_scores              [{"match_id", "bookmaker" (code, or null for the consensus), "snapshot",
 --                           "p_home", "p_draw", "p_away", "rps", "log_loss", "brier"}]
 --
--- Batches are serialised (advisory lock). Under the lock the season's inputs are read again: if
--- they no longer match p_revision (an ingest, or an overlapping run, changed them after this batch
--- was computed), nothing is written and {"stale": true} is returned, so the caller re-reads and
--- re-scores. Otherwise the batch is the truth for the season: a stored score of one of its matches
+-- The function takes the ingest's per-league lock (football_ingest_matches, 20261111130000), so it
+-- never overlaps an ingest of the same league or another scoring batch. Under the lock the season's
+-- inputs are read again: if they no longer match p_revision (an ingest changed them after this
+-- batch was computed), nothing is written and {"stale": true} is returned, so the caller re-reads
+-- and re-scores. Otherwise the batch is the truth for the season: a stored score of one of its matches
 -- that the batch no longer has (its odds were removed, or the match lost its result) is deleted.
 -- Updates have an IS DISTINCT FROM guard, so re-sending the same scores changes no row and no
 -- updated_at or scored_at. Returns rows inserted, updated, deleted and stale.
@@ -340,7 +341,9 @@ begin
     raise exception using errcode = '22023', message = 'p_revision is required';
   end if;
 
-  perform pg_advisory_xact_lock(hashtext('football_upsert_market_scores'));
+  -- The same lock football_ingest_matches takes: an ingest can't commit between the revision
+  -- check and the writes below.
+  perform pg_advisory_xact_lock(hashtext('football_ingest_matches'), hashtext(p_division));
 
   v_rows := football_market_score_rows(p_division, p_season);
   if md5(v_rows::text) is distinct from p_revision then
