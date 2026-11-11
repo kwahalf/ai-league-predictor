@@ -12,8 +12,10 @@ small lexer that understands comments (`--`, nested `/* */`), single-quoted and
 column list is skipped and the view's own `WITH (...)` options list is parsed.
 Only `security_invoker` set to a true value (`true`/`on`/`yes`/`1`, or the bare
 option, which Postgres reads as true) is safe. A false value, any value the
-audit can't read as true, or no option at all is a finding. Dollar-quoted bodies
-(e.g. functions) are scanned too, since they can hold dynamic `CREATE VIEW`s.
+audit can't read as true, or no option at all is a finding. String bodies
+(dollar-quoted or single-quoted, e.g. function and `DO` bodies or `EXECUTE`
+arguments) are scanned too, since they can create views; only `COMMENT ... IS`
+text is skipped as inert.
 """
 from __future__ import annotations
 
@@ -32,9 +34,9 @@ except ImportError:
 _TRUE_VALUES = {"true", "on", "yes", "1", "t", "y"}
 
 # Unquoted identifiers and numbers. `$` is allowed after the first character.
-_WORD = re.compile(r"[A-Za-z0-9_\x80-￿][A-Za-z0-9_$\x80-￿]*")
+_WORD = re.compile(r"[A-Za-z0-9_\x80-\uffff][A-Za-z0-9_$\x80-\uffff]*")
 # Dollar-quote opening tag: `$$` or `$tag$`, tag an identifier.
-_DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_\x80-￿][A-Za-z0-9_\x80-￿]*)?\$")
+_DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_\x80-\uffff][A-Za-z0-9_\x80-\uffff]*)?\$")
 # Modifiers allowed between CREATE and VIEW.
 _VIEW_MODIFIERS = {"or", "replace", "temp", "temporary", "recursive", "materialized"}
 
@@ -44,6 +46,7 @@ class Token:
     kind: str  # word | ident | string | dollar | punct
     value: str  # word text, unquoted identifier/string content, or the char
     pos: int  # offset of the token's first character in the text
+    body_pos: int = -1  # strings: offset where the content starts
 
 
 def tokenize(text: str) -> list[Token]:
@@ -69,12 +72,12 @@ def tokenize(text: str) -> list[Token]:
                     i += 1
         elif ch in ("'", '"'):
             value, i_end = _read_quoted(text, i, backslash_escapes=False)
-            tokens.append(Token("string" if ch == "'" else "ident", value, i))
+            tokens.append(Token("string" if ch == "'" else "ident", value, i, i + 1))
             i = i_end
         elif ch in "eE" and text.startswith("'", i + 1):
             # E'...' escape string: backslash escapes the next character.
             value, i_end = _read_quoted(text, i + 1, backslash_escapes=True)
-            tokens.append(Token("string", value, i))
+            tokens.append(Token("string", value, i, i + 2))
             i = i_end
         elif ch == "$" and (m := _DOLLAR_TAG.match(text, i)):
             # Words consume their own `$`s, so a `$` here is at a token boundary.
@@ -82,7 +85,7 @@ def tokenize(text: str) -> list[Token]:
             body_start = m.end()
             close = text.find(tag, body_start)
             body_end = n if close == -1 else close
-            tokens.append(Token("dollar", text[body_start:body_end], body_start))
+            tokens.append(Token("dollar", text[body_start:body_end], i, body_start))
             i = n if close == -1 else close + len(tag)
         elif m := _WORD.match(text, i):
             tokens.append(Token("word", m.group(0), i))
@@ -177,19 +180,27 @@ def security_invoker_from_options(option_tokens: list[Token]) -> bool:
 @dataclass
 class ViewDecl:
     name: str
-    pos: int
+    line: int
     secure: bool
 
 
-def find_views(text: str, offset: int = 0) -> list[ViewDecl]:
-    """Every CREATE VIEW in `text`, including those inside dollar-quoted bodies."""
+def find_views(text: str, first_line: int = 1) -> list[ViewDecl]:
+    """Every CREATE VIEW in `text`, including those inside string bodies.
+
+    Single-quoted and dollar-quoted strings are scanned as SQL, because `DO`
+    blocks, function bodies and `EXECUTE` arguments can create views. Content
+    keeps its newlines, so nested line numbers stay exact. Only the text after
+    `IS` (as in `COMMENT ON ... IS '...'`) is treated as inert.
+    """
     tokens = tokenize(text)
     views: list[ViewDecl] = []
     k = 0
     while k < len(tokens):
         tok = tokens[k]
-        if tok.kind == "dollar":
-            views.extend(find_views(tok.value, offset + tok.pos))
+        if tok.kind in ("dollar", "string"):
+            if not _is_word(tokens, k - 1, "is"):
+                body_line = first_line + text[: tok.body_pos].count("\n")
+                views.extend(find_views(tok.value, body_line))
             k += 1
             continue
         if not _is_word(tokens, k, "create"):
@@ -224,7 +235,8 @@ def find_views(text: str, offset: int = 0) -> list[ViewDecl]:
             close = _skip_parens(tokens, j + 1)
             secure = security_invoker_from_options(tokens[j + 2 : close - 1])
             j = close
-        views.append(ViewDecl(name=".".join(parts), pos=offset + start, secure=secure))
+        line = first_line + text[:start].count("\n")
+        views.append(ViewDecl(name=".".join(parts), line=line, secure=secure))
         k = j
     return views
 
@@ -242,11 +254,10 @@ def scan_migrations(migrations_dir: Path) -> list[Finding]:
                 findings_by_view.pop(normalized_view_name, None)
                 continue
 
-            line = text[: view.pos].count("\n") + 1
             findings_by_view[normalized_view_name] = Finding(
                 check="view-security-invoker",
                 severity="HIGH",
-                location=f"{rel}:{line}",
+                location=f"{rel}:{view.line}",
                 message=(
                     f"View `{view.name}` is created without "
                     "`WITH (security_invoker = true)` — it bypasses base-table RLS."

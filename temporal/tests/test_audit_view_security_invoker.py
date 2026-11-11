@@ -209,7 +209,33 @@ def test_view_created_inside_function_body_is_scanned(tmp_path):
     assert findings[0].location.endswith(":3")
 
 
-def test_create_view_text_in_string_literal_is_ignored(tmp_path):
+def test_view_created_in_single_quoted_do_body_is_scanned(tmp_path):
+    sql = "DO 'BEGIN CREATE VIEW v_bad AS SELECT 1; END;';"
+    assert len(_scan(tmp_path, sql)) == 1
+
+
+def test_view_created_by_execute_literal_is_scanned(tmp_path):
+    sql = (
+        "DO $$\n"
+        "BEGIN\n"
+        "  EXECUTE 'CREATE VIEW v_bad AS SELECT 1';\n"
+        "END;\n"
+        "$$;\n"
+    )
+    findings = _scan(tmp_path, sql)
+    assert len(findings) == 1
+    assert findings[0].location.endswith(":3")
+
+
+def test_execute_literal_with_true_option_is_safe(tmp_path):
+    sql = (
+        "DO $$ BEGIN EXECUTE "
+        "'CREATE VIEW v_ok WITH (security_invoker = ''true'') AS SELECT 1'; END $$;"
+    )
+    assert _scan(tmp_path, sql) == []
+
+
+def test_create_view_text_in_comment_on_is_ignored(tmp_path):
     sql = "comment on table t is 'create view v_fake as select 1';"
     assert _scan(tmp_path, sql) == []
 
