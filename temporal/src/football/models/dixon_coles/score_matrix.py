@@ -107,8 +107,8 @@ class ScoreForecast:
 
     def over_under(self, line: float = 2.5) -> tuple[float, float]:
         """(P(total goals > line), P(total goals < line)) for a half-goal ``line``."""
-        if line != line // 1 + 0.5:
-            raise ValueError("only half-goal lines (0.5, 1.5, 2.5, ...) have no push")
+        if line < 0.5 or line != line // 1 + 0.5:
+            raise ValueError("only half-goal lines 0.5, 1.5, 2.5, ... are supported")
         totals = self.total_goals_distribution()
         under = float(totals[: int(line) + 1].sum())
         return (1.0 - under, under)

@@ -99,7 +99,11 @@ def _objective(theta: np.ndarray, data: FitData, prior: TeamPrior | None, total_
     tau[c01] = 1.0 + lam[c01] * rho
     tau[c10] = 1.0 + mu[c10] * rho
     tau[c11] = 1.0 - rho
+    # A factor that would go to 0 or below is floored. The floored correction is constant, so
+    # those matches contribute no τ-derivative (the cells' masks drop them below).
+    floored = tau < _TAU_FLOOR
     tau = np.maximum(tau, _TAU_FLOOR)
+    c00, c01, c10, c11 = c00 & ~floored, c01 & ~floored, c10 & ~floored, c11 & ~floored
     d_lam[c00] = -mu[c00] * rho / tau[c00]
     d_mu[c00] = -lam[c00] * rho / tau[c00]
     d_rho[c00] = -lam[c00] * mu[c00] / tau[c00]

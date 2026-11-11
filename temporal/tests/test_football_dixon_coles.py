@@ -22,6 +22,7 @@ import pytest
 from src.football.backtest import MatchView, TrivialModel, run_backtest
 from src.football.backtest import cli
 from src.football.data import MatchRecord, OddsQuote, parse_season_csv
+from src.football.models.dixon_coles import fit as dc_fit
 from src.football.models.dixon_coles import (
     DEFAULT_PROMOTED_ATTACK,
     DEFAULT_PROMOTED_DEFENCE,
@@ -120,8 +121,11 @@ def test_top_scorelines_are_sorted_and_come_from_the_matrix() -> None:
 def test_score_matrix_rejects_bad_input() -> None:
     with pytest.raises(ValueError):
         score_matrix(0.0, 1.0)
-    with pytest.raises(ValueError):
-        ScoreForecast.from_rates(1.0, 1.0).over_under(2.0)
+    for line in (2.0, -0.5, -1.5):
+        with pytest.raises(ValueError):
+            ScoreForecast.from_rates(1.0, 1.0).over_under(line)
+    over, under = ScoreForecast.from_rates(1.0, 1.0).over_under(0.5)
+    assert under == pytest.approx(score_matrix(1.0, 1.0)[0, 0])
 
 
 def test_negative_tau_is_floored_at_zero() -> None:
@@ -190,6 +194,45 @@ def test_fit_recovers_known_parameters() -> None:
     assert np.sqrt(np.mean((fitted_defence - defence) ** 2)) < 0.06
     assert p.home_adv == pytest.approx(home_adv, abs=0.04)
     assert p.rho == pytest.approx(rho, abs=0.05)
+
+
+def _numeric_gradient(f, theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+    grad = np.zeros_like(theta)
+    for i in range(theta.size):
+        step = np.zeros_like(theta)
+        step[i] = eps
+        grad[i] = (f(theta + step) - f(theta - step)) / (2 * eps)
+    return grad
+
+
+def test_analytic_gradient_matches_finite_differences() -> None:
+    rng = np.random.default_rng(0)
+    n, m = 6, 300
+    home = rng.integers(0, n, m)
+    away = (home + rng.integers(1, n, m)) % n
+    data = dc_fit.FitData(
+        home, away, rng.integers(0, 4, m).astype(float), rng.integers(0, 4, m).astype(float),
+        rng.random(m), n,
+    )  # fmt: skip
+    prior = dc_fit.TeamPrior(rng.normal(size=n), rng.normal(size=n), rng.random(n) * 5)
+    theta = np.concatenate([rng.normal(0, 0.3, 2 * n), [0.25, -0.1]])
+    for p in (None, prior):
+        value = lambda t: dc_fit._objective(t, data, p, 3.0)[0]  # noqa: E731
+        analytic = dc_fit._objective(theta, data, p, 3.0)[1]
+        np.testing.assert_allclose(analytic, _numeric_gradient(value, theta), atol=1e-6)
+
+
+def test_gradient_is_zero_through_a_floored_tau() -> None:
+    # One 0-0 between two teams with λ = μ = 2 and ρ = 0.28: τ(0, 0) = 1 − 4·0.28 < 0 is floored,
+    # so the correction is locally constant and contributes nothing to the gradient.
+    data = dc_fit.FitData(
+        np.array([0]), np.array([1]), np.array([0.0]), np.array([0.0]), np.array([1.0]), 2
+    )
+    theta = np.array([0.0, 0.0, -np.log(2.0), -np.log(2.0), 0.0, 0.28])
+    value = lambda t: dc_fit._objective(t, data, None, 1.0)[0]  # noqa: E731
+    analytic = dc_fit._objective(theta, data, None, 1.0)[1]
+    assert analytic[-1] == 0.0
+    np.testing.assert_allclose(analytic, _numeric_gradient(value, theta), atol=1e-6)
 
 
 def _base_league() -> list[MatchRecord]:
@@ -303,6 +346,39 @@ def test_prior_fades_as_the_promoted_team_plays_more() -> None:
     assert pull(30) < pull(0) / 2
 
 
+def test_promotion_is_detected_when_the_window_is_one_season() -> None:
+    history = _two_seasons_with_promoted_team((3, 0))
+    model = DixonColesModel(n_seasons=1)
+    model.fit(history, date(2023, 9, 4))
+    assert model.parameters.seasons == ("2324",)
+    assert model.parameters.promoted == {"Newcomer"}
+
+
+def test_returning_team_keeps_the_prior_until_its_first_result() -> None:
+    # "Team 09" plays 2223, is absent in 2324 ("Newcomer" replaces it) and returns in 2425, where
+    # other teams have already played. "Team 01" played 2324 but its first 2425 match is delayed.
+    history = _two_seasons_with_promoted_team((1, 1))
+    history += [
+        record(date(2024, 8, 17), "Team 02", "Team 03", 2, 1, season="2425"),
+        record(date(2024, 8, 17), "Newcomer", "Team 04", 0, 0, season="2425"),
+    ]
+    model = DixonColesModel()
+    model.fit(history, date(2024, 8, 19))
+    p = model.parameters
+    assert p.seasons[-1] == "2425" and "Team 09" in p.attack
+    prior = (DEFAULT_PROMOTED_ATTACK, p.mean_defence + DEFAULT_PROMOTED_DEFENCE)
+    assert model.strengths("Team 09", "2425") == pytest.approx(prior)
+    assert model.strengths("Team 01", "2425") == (p.attack["Team 01"], p.defence["Team 01"])
+    assert model.strengths("Team 02", "2425") == (p.attack["Team 02"], p.defence["Team 02"])
+
+    # After its first 2425 result it is fitted, with the promoted-team prior in the fit.
+    history.append(record(date(2024, 8, 18), "Team 09", "Team 05", 1, 0, season="2425"))
+    model.fit(history, date(2024, 8, 19))
+    p = model.parameters
+    assert "Team 09" in p.promoted
+    assert model.strengths("Team 09", "2425") == (p.attack["Team 09"], p.defence["Team 09"])
+
+
 def test_unknown_and_returning_teams_get_the_promoted_prior() -> None:
     history = _two_seasons_with_promoted_team((1, 1))
     model = DixonColesModel()
@@ -314,7 +390,8 @@ def test_unknown_and_returning_teams_get_the_promoted_prior() -> None:
     assert model.strengths("Brand New FC", "2324") == pytest.approx(prior)
     # Relegated last season (no 2324 match) and predicted next season: back to the prior.
     assert model.strengths("Team 09", "2425") == pytest.approx(prior)
-    # Its fitted strengths still apply within the fitted season.
+    # Within the fitted season it counts as established (it played the season before) and simply
+    # hasn't played yet, so its fitted strengths apply.
     assert model.strengths("Team 09", "2324") == (p.attack["Team 09"], p.defence["Team 09"])
     # Teams in the current league keep their fitted strengths into the next season.
     assert model.strengths("Team 00", "2425") == (p.attack["Team 00"], p.defence["Team 00"])

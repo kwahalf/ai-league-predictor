@@ -13,7 +13,7 @@ in ``history`` (the current, possibly part-played, season and the two before it)
 **Promoted teams.** A team new to the top flight has little or no data, and what it has is
 usually poor: promoted sides score fewer and concede more than the league average. Two rules:
 
-1. *In the fit:* a team that plays in the latest season of the window but not in the season before
+1. *In the fit:* a team that plays in the latest season of the history but not in the season before
    it (it was promoted this season) gets a Gaussian prior pulling its attack toward
    ``promoted_attack`` and its defence toward ``mean(defence) + promoted_defence``, with precision
    ``promoted_precision``. In the likelihood each match adds roughly λ ≈ 1.4 units of precision
@@ -21,10 +21,12 @@ usually poor: promoted sides score fewer and concede more than the league averag
    matches: after ~9 games a promoted team's own results count as much as the prior, and by the
    end of the season they dominate. Every other team gets a very weak pull (``ridge_precision``)
    toward the league average, which only matters for freak records in very few matches.
-2. *Before it has played:* a team with no fitted strengths (no top-flight match in the window), or
-   one that didn't play in the latest fitted season and is predicted in a later season (promoted
-   between seasons, e.g. a side relegated two seasons ago coming back), is given the prior itself:
-   attack ``promoted_attack``, defence ``mean(defence) + promoted_defence``.
+2. *Before it has played:* until a team has a result in the season being predicted, it is given
+   the prior itself (attack ``promoted_attack``, defence ``mean(defence) + promoted_defence``)
+   unless it was in the league the season before: a team with no fitted strengths, or a side
+   relegated earlier coming back, whose fitted strengths are stale. Established teams keep their
+   fitted strengths, including one whose first fixture of a new season is delayed. See
+   ``strengths``.
 
 The default prior means are the average fitted strengths of the 27 promoted teams of 2017/18 to
 2025/26 at the end of their first season, fitted without the prior (attack −0.24, defence −0.15
@@ -72,6 +74,8 @@ class DixonColesParameters:
     """Teams fitted with the promoted-team prior (first season in the top flight)."""
     current_teams: frozenset[str]
     """Teams that played in the latest season of the window."""
+    previous_teams: frozenset[str]
+    """Teams that played in the season before that (empty if the history has only one season)."""
     n_matches: int
     converged: bool
 
@@ -133,7 +137,10 @@ class DixonColesModel:
         index = {t: i for i, t in enumerate(teams)}
         latest = window[-1]
         current = _teams_in(matches, latest)
-        promoted = current - _teams_in(matches, window[-2]) if len(window) >= 2 else set()
+        # Promotion is judged on the season before the latest one in the whole history, so it
+        # works whatever the window size (with n_seasons=1 that season is outside the window).
+        previous = _teams_in(played, all_seasons[-2]) if len(all_seasons) >= 2 else set()
+        promoted = current - previous if previous else set()
 
         ages = np.array([(as_of - r.match_date).days for r in matches], dtype=float)
         if self.half_life_days is None:
@@ -164,6 +171,7 @@ class DixonColesModel:
             rho=fitted.rho,
             promoted=frozenset(promoted),
             current_teams=frozenset(current),
+            previous_teams=frozenset(previous),
             n_matches=len(matches),
             converged=fitted.converged,
         )
@@ -177,12 +185,19 @@ class DixonColesModel:
     # --- prediction ------------------------------------------------------------------------
 
     def strengths(self, team: str, season: str | None = None) -> tuple[float, float]:
-        """(attack, defence) used for ``team`` in a match of ``season`` (the promotion rules)."""
+        """(attack, defence) used for ``team`` in a match of ``season`` (the promotion rules).
+
+        ``season`` defaults to the latest fitted season. A team uses its fitted strengths if it has
+        them and is in the league as far as the history shows: it has played in the latest fitted
+        season, or (when predicting that same season) it played the season before, i.e. it's an
+        established team that hasn't played yet this season. Anyone else (a new team, or one
+        returning to the top flight) gets the promoted-team prior until its first result.
+        """
         p = self.parameters
-        newly_promoted = (
-            season is not None and season != p.seasons[-1] and team not in p.current_teams
+        in_league = team in p.current_teams or (
+            (season is None or season == p.seasons[-1]) and team in p.previous_teams
         )
-        if team in p.attack and not newly_promoted:
+        if team in p.attack and in_league:
             return p.attack[team], p.defence[team]
         return self.promoted_attack, p.mean_defence + self.promoted_defence
 
