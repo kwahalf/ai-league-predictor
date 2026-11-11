@@ -1,6 +1,7 @@
 """Tests for the football-data.co.uk CSV parser (plan step 1.2).
 
-Fixture files in tests/fixtures/football/ are verbatim rows cut from the real files on 2026-11-11:
+Fixture files in tests/fixtures/football/ are verbatim rows cut from the real files on 2026-11-11
+(git stores them with LF line endings; the originals are CRLF, covered by a synthetic test below):
 - E0_1617_sample.csv: 2016/17 (no BOM, dd/mm/yy dates, no Time, BbAv columns, no closing odds
   except Pinnacle's).
 - E0_2324_sample.csv: 2023/24 (Time, Avg columns, closing odds), including the BST start day.
