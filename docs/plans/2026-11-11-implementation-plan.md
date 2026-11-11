@@ -93,10 +93,10 @@ Steps 3.1–3.3 and 3.4 can be built in parallel once 3.1's views exist.
 | # | PR | Size | Contents | Done when |
 |---|---|---|---|---|
 | 3.1 | Views and fixtures page | M | `v_upcoming_predictions`, `v_match_detail`, `v_model_performance` (with `security_invoker`); fixtures page as JSON forms under `frontend/forms/football/`. Fix the template's layout engine first: `Grid` and `Stack` build Tailwind classes at runtime (`grid-cols-${n}`, `gap-${n}`), which Tailwind never generates, so numeric columns and gaps are lost; set them as inline styles (found by Copilot in PR 0.1). | Fixtures page shows the next 14 days with edge badges |
-| 3.2 | Match detail page | M | Probability bars (headline and fundamentals), scoreline heat map, goal markets, odds table, form, strengths, head-to-head. | All match-page acceptance criteria in the spec pass |
+| 3.2 | Match detail page | M | If the probability bars use the template's `Progress` component (`frontend/src/components/ui/progress.tsx`), first pass `value` through to the Radix root: it's dropped today, so screen readers announce every bar as indeterminate (found by Copilot in PR 0.1). Probability bars (headline and fundamentals), scoreline heat map, goal markets, odds table, form, strengths, head-to-head. | All match-page acceptance criteria in the spec pass |
 | 3.3 | Performance page | M | RPS over time and calibration, for all layers and sources, filterable by season and model version. | Numbers match `v_model_performance` |
 | 3.4 | Agent tools and `match_analyst` | M | The six read-only tools in `temporal/src/agent/tools.py`; `temporal/agents/match_analyst.yaml` on `claude-sonnet-5-5`. Also fix or retire the template's example tools (found by Copilot in PR 0.1): `list_entity_types` reads one capped page (1,000 rows) and miscounts beyond it; `record_note` creates a duplicate note if its activity is retried, because it doesn't pass a stable `p_entity_id`. The new tools must not repeat either mistake. | Config loads under `AGENT_PROVIDER=fake`; a real run explains a fixture citing only tool figures |
-| 3.5 | "Explain this prediction" | S | Button on the match page that starts a `match_analyst` run for that match. | 20-explanation faithfulness spot check passes |
+| 3.5 | "Explain this prediction" | S | Button on the match page that starts a `match_analyst` run for that match. Fix the template agent page's recent-runs list, which goes stale after starting a run (`frontend/src/pages/agent.json`; found by Copilot in PR 0.1). | 20-explanation faithfulness spot check passes |
 
 ## Milestone 4: Extensions (spec phase 4)
 
@@ -152,6 +152,14 @@ season file.
 **Go/no-go:** each is promoted only if it wins. A losing challenger is still worth recording in
 `model_versions`, so nobody repeats the experiment blind. True expected-goals models need shot
 locations, which aren't in the free data. They'd come from the Track B provider, if it offers them.
+
+### Decisions needed for milestone 3
+
+- [ ] **Model route for `match_analyst` (by step 3.4).** The template recommends calling Claude
+      directly (`provider: claude`, needs `ANTHROPIC_API_KEY`), because routing Claude through
+      LiteLLM loses thinking blocks. The current key is for the hosted LiteLLM proxy, which serves
+      Claude models and `gpt-6-sol`. Options: an Anthropic key for `provider: claude`; Claude through
+      the hosted proxy (works today, accepting the loss); or `gpt-6-sol` through the proxy.
 
 ### Decisions needed for milestone 4
 
@@ -268,6 +276,12 @@ runner.
 ## Known template issues
 
 Found in review and not tied to a step, because this project doesn't use the code yet:
+
+- **The bundled local LiteLLM proxy doesn't serve the example agent's model.** `litellm/config.yaml`
+  serves `gpt-5.5` and `workshop-default` only, and deliberately not Claude ("DO NOT ROUTE CLAUDE
+  THROUGH HERE": the round trip loses thinking blocks; use `provider: claude`). The example agent
+  uses `claude-sonnet-5-5` through the hosted proxy instead, which works. See the provider decision
+  for 3.4 below.
 
 - **Azure GPT `v1` style:** `temporal/src/agent/llm/azure_gpt.py` sends the dated default
   `api-version` to the `/openai/v1` endpoint, which rejects dated versions. Fix before anyone sets
