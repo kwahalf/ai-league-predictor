@@ -22,7 +22,7 @@ import io
 import math
 import re
 from datetime import date, datetime, time, timezone
-from typing import Iterable, Mapping
+from typing import Iterable, Iterator, Mapping
 from zoneinfo import ZoneInfo
 
 from .columns import ODDS_COLUMNS, OddsColumns, snapshot_for
@@ -81,14 +81,19 @@ def parse_fixtures_csv(
 def _parse(data: str | bytes, season: str, *, division: str, live: bool) -> list[MatchRecord]:
     if not _SEASON_RE.match(season):
         raise ValueError(f"season must look like '2324', got {season!r}")
-    reader = csv.DictReader(io.StringIO(_decode(data)))
-    header = [name.strip() for name in (reader.fieldnames or []) if name and name.strip()]
-    reader.fieldnames = [name.strip() if name else "" for name in (reader.fieldnames or [])]
+    # strict: an unterminated quote raises instead of swallowing the rest of the file.
+    reader = csv.DictReader(io.StringIO(_decode(data)), strict=True)
+    try:
+        raw_header = reader.fieldnames or []
+    except csv.Error as exc:
+        raise CsvFormatError(f"line {reader.line_num}: malformed CSV: {exc}") from exc
+    header = [name.strip() for name in raw_header if name and name.strip()]
+    reader.fieldnames = [name.strip() if name else "" for name in raw_header]
     _check_layout(header)
     odds_layout = _resolve_odds_columns(header, live=live)
 
     matches: list[MatchRecord] = []
-    for row in reader:
+    for row in _rows(reader):
         line_no = reader.line_num
         if _is_blank(row):
             continue
@@ -106,6 +111,18 @@ def _parse(data: str | bytes, season: str, *, division: str, live: bool) -> list
         except CsvFormatError as exc:
             raise CsvFormatError(f"line {line_no}: {exc}") from exc
     return matches
+
+
+def _rows(reader: csv.DictReader) -> Iterator[dict]:
+    """Iterate ``reader``, turning ``csv.Error`` into a line-numbered ``CsvFormatError``."""
+    while True:
+        try:
+            row = next(reader)
+        except StopIteration:
+            return
+        except csv.Error as exc:
+            raise CsvFormatError(f"line {reader.line_num}: malformed CSV: {exc}") from exc
+        yield row
 
 
 def _decode(data: str | bytes) -> str:

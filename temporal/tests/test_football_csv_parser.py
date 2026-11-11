@@ -311,3 +311,22 @@ def test_duplicate_column_names_raise():
     text = "Div,Date,HomeTeam,AwayTeam,B365H,B365D,B365A, B365H\nE0,13/08/16,Burnley,Swansea,2.4,3.3,3.25,9.0\n"
     with pytest.raises(UnknownLayoutError, match="duplicate column names \\['B365H'\\]"):
         parse_season_csv(text, "1617")
+
+
+def test_unterminated_quote_raises_instead_of_swallowing_rows():
+    text = (
+        "Div,Date,HomeTeam,AwayTeam,B365H,B365D,B365A,Referee\n"
+        'E0,13/08/16,Burnley,Swansea,2.4,3.3,3.25,"J Moss\n'
+        "E0,13/08/16,Man City,Sunderland,1.25,6.5,15,R Madley\n"
+    )
+    with pytest.raises(CsvFormatError, match="malformed CSV"):
+        parse_season_csv(text, "1617")
+
+
+def test_quoted_fields_still_parse():
+    text = (
+        "Div,Date,HomeTeam,AwayTeam,B365H,B365D,B365A,Referee\n"
+        'E0,13/08/16,"Nott\'m Forest",Swansea,2.4,3.3,3.25,"Moss, J"\n'
+    )
+    (match,) = parse_season_csv(text, "1617")
+    assert match.home_team == "Nottingham Forest"
