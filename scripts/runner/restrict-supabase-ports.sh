@@ -13,7 +13,7 @@ set -euo pipefail
 
 action="${1:-apply}"
 tag="ai-league-predictor: block outside access to Supabase"
-# dev 54320-54329 + 8083, live 55320-55329 + 8183 (see stacks/*.env)
+# dev 54320-54329 + 8083 (includes the mail UI, SUPABASE_LOCAL_SMTP_PORT), live 55320-55329 + 8183 (see stacks/*.env)
 ports=(54320:54329 8083 55320:55329 8183)
 
 uplink="${UPLINK:-$(ip route get 1.1.1.1 | awk '{for (i=1;i<NF;i++) if ($i=="dev") print $(i+1); exit}')}"
