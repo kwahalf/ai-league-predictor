@@ -129,11 +129,13 @@ declare
   v_status text;
   v_deadline timestamptz;
 begin
-  new.created_at := clock_timestamp();
-  select kickoff_at, status into v_kickoff_at, v_status from matches where id = new.match_id;
+  -- FOR SHARE waits for an uncommitted change to the match (an ingest finishing it or moving its
+  -- kick-off), so the checks use the committed state; the clock is read after that wait.
+  select kickoff_at, status into v_kickoff_at, v_status from matches where id = new.match_id for share;
   if not found then
     return new; -- the foreign key reports the missing match
   end if;
+  new.created_at := clock_timestamp();
   v_deadline := football_prediction_deadline(v_kickoff_at);
   if new.created_at >= v_deadline then
     raise exception using
