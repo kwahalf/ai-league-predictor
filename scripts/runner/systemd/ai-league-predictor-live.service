@@ -1,0 +1,29 @@
+# Starts the live stack at boot from the long-lived checkout, then makes sure the daily ingest
+# schedule exists. Template: install-live-units.sh replaces @LIVE_DIR@ and @USER@.
+# See docs/runbooks/live-setup.md.
+#
+# Live is never reset: this unit only runs `make up` / `make down` (data is kept). New migrations
+# go in by hand with `make migrate STACK=live`, which backs up first.
+[Unit]
+Description=AI League Predictor: live stack (Supabase, Temporal, worker, frontend)
+After=docker.service network-online.target ai-league-predictor-firewall.service
+Wants=network-online.target ai-league-predictor-firewall.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=@USER@
+SupplementaryGroups=docker
+WorkingDirectory=@LIVE_DIR@
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=HOME=@HOME@
+# Pulling or building images on a cold start can be slow on this machine.
+TimeoutStartSec=1800
+ExecStart=/usr/bin/make up STACK=live
+ExecStartPost=@LIVE_DIR@/scripts/runner/ingest-schedule.sh live
+ExecStop=/usr/bin/make down STACK=live
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target

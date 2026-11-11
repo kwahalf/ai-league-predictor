@@ -1,0 +1,19 @@
+# Blocks outside access to both stacks' Supabase ports at boot (the rules don't survive a reboot).
+# Runs as root, so it runs a root-owned copy of scripts/runner/restrict-supabase-ports.sh that
+# install-live-units.sh puts in /usr/local/sbin, not the user-writable copy in the checkout.
+# See docs/runbooks/live-setup.md.
+[Unit]
+Description=AI League Predictor: block outside access to Supabase ports
+# Docker creates the DOCKER-USER chain when it starts, so run after it.
+After=docker.service
+Requires=docker.service
+Before=ai-league-predictor-live.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ai-league-predictor-restrict-ports apply
+ExecStop=/usr/local/sbin/ai-league-predictor-restrict-ports remove
+
+[Install]
+WantedBy=multi-user.target
