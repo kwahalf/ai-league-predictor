@@ -8,12 +8,40 @@
 ## How we'll work
 
 - **One pull request per step** below, merged into `main` in order. Each PR is small enough to review in one sitting and leaves `main` working.
-- **`main` is protected; @kwahalf reviews and merges every PR.** Nothing is pushed to `main` directly, including changes to this plan and the spec. No automated reviewer or auto-merge.
+- **`main` is protected; @kwahalf gives final sign-off and merges every PR.** Nothing is pushed to `main` directly, including changes to this plan and the spec. Copilot reviews first (see "Review process"), but nothing merges automatically.
 - **Every PR passes** the worker test suite (pytest in the worker image), `supabase db reset` (migrations and seed apply cleanly), and `scripts/audit/run_audits.py`.
 - **Measure before modelling.** The scoring metrics and the backtest harness land before any model, so every model is judged the day it arrives.
 - **Data first, UI last.** Nothing user-facing is built until the numbers behind it have been backtested.
 
 Sizes are relative: **S** about a day, **M** two to three days, **L** about a week.
+
+## Review process
+
+Every PR goes through the same loop before @kwahalf sees it. Claude runs steps 1–5; @kwahalf does step 6.
+
+1. **Open the PR** and wait for `pr-validation` and `architecture-audit` to pass. Fix failures before
+   asking anyone to review.
+2. **Request a Copilot review** on the PR.
+3. **Wait for the review**, then go through every Copilot comment:
+   - **Valid:** fix it, push, and reply on the thread with the commit that fixes it.
+   - **Not valid, or out of scope:** reply on the thread explaining why, citing the spec, the plan or
+     the code. Out-of-scope points that are still worth doing are noted in the PR summary for a later step.
+4. **Request a re-review** from Copilot on the new commits, and repeat step 3.
+5. **Stop the loop** when a review raises nothing new that needs a change, or after **3 rounds**,
+   whichever comes first. Anything still disputed after 3 rounds is left for @kwahalf to decide, not
+   argued further.
+6. **Tag @kwahalf for final sign-off** in a PR comment summarising: what changed, which Copilot points
+   were fixed, which were declined and why, anything left open, and CI status. @kwahalf reviews and
+   merges, or comments, in which case Claude addresses the comments and tags @kwahalf again.
+
+Notes:
+- Copilot's reviews are comments only: they never approve or block a merge, so they don't conflict
+  with branch protection. Final sign-off is always @kwahalf's.
+- This needs Copilot code review enabled for the repository (part of a GitHub Copilot plan). PR 1,
+  this plan, is the first run and confirms it works.
+- This is separate from the template's `pipeline-*` workflows, which have their own automated
+  review-and-merge "factory". Those stay disabled in practice (they fail without their tokens), and
+  must not be given tokens while this process is in use, or PRs could be merged without @kwahalf.
 
 ## Milestone 0: Repository foundation
 
@@ -146,7 +174,8 @@ UI work can start right after 2.7, while the 4-gameweek silent run is still goin
 ## Decisions
 
 - [x] **Owner:** @kwahalf (the spec's `Owner` field is updated in PR 0.1).
-- [x] **Reviews:** @kwahalf reviews and merges every PR; `main` is protected. Protection requires a
+- [x] **Reviews:** Copilot reviews every PR first and Claude addresses its feedback (see "Review
+      process"); @kwahalf gives final sign-off and merges; `main` is protected. Protection requires a
       pull request with 0 required approvals, because GitHub doesn't let an author approve their own
       PR and these PRs are opened from the `kwahalf` account.
 - [x] **Hosting:** the stack runs on the current self-hosted runner. See "Hosting on the runner" below.
