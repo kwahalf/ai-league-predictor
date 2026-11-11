@@ -130,6 +130,9 @@ def _is_blank(row: Mapping[str | None, object]) -> bool:
 
 
 def _check_layout(header: list[str]) -> None:
+    duplicates = sorted({name for name in header if header.count(name) > 1})
+    if duplicates:
+        raise UnknownLayoutError(f"duplicate column names {duplicates}")
     missing = [name for name in _REQUIRED_COLUMNS if name not in header]
     if missing:
         raise UnknownLayoutError(f"missing required columns {missing}; header starts {header[:8]}")

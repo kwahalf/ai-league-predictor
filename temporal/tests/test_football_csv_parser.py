@@ -305,3 +305,9 @@ def test_empty_surplus_fields_allowed():
     text = "Div,Date,HomeTeam,AwayTeam,B365H,B365D,B365A\nE0,13/08/16,Burnley,Swansea,2.4,3.3,3.25,,\n"
     (match,) = parse_season_csv(text, "1617")
     assert match.odds_for("B365", "pre_match").away == 3.25
+
+
+def test_duplicate_column_names_raise():
+    text = "Div,Date,HomeTeam,AwayTeam,B365H,B365D,B365A, B365H\nE0,13/08/16,Burnley,Swansea,2.4,3.3,3.25,9.0\n"
+    with pytest.raises(UnknownLayoutError, match="duplicate column names \\['B365H'\\]"):
+        parse_season_csv(text, "1617")
