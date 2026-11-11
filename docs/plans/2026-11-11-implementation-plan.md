@@ -189,7 +189,7 @@ of work is set by real dependencies below, not by step numbers.
 | 3.1 | 2.1b |
 | 3.2, 3.3, 3.4 | 3.1 |
 | 3.5 | 3.2, 3.4 |
-| **Release of milestone 3 to live** | 2.7, 3.5, and the 4-gameweek comparison passed |
+| **Release of milestone 3 to live** | 2.7, 3.3, 3.5, and the 4-gameweek comparison passed |
 | Milestone 4 tracks | milestone 3 shipped and 10 live gameweeks scored |
 
 ```mermaid
@@ -216,6 +216,7 @@ flowchart LR
   s26 --> s27[2.7 predict and score]
   s27 --> silent{{4 silent gameweeks}}
   silent --> rel[[release pages and agent to live]]
+  s33 --> rel
   s35 --> rel
   s21b --> s31[3.1 views + fixtures page]
   s31 --> s32[3.2 match page]
