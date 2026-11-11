@@ -364,3 +364,34 @@ def test_view_has_no_outcome() -> None:
     assert not {"home_goals", "away_goals", "result"} & {
         f.name for f in dataclasses.fields(MatchView)
     }
+
+
+# --- Step 2.6 settings --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("structure,half_life", [("pool", None), ("full", 200.0), ("pool", 200.0)])
+def test_tuned_variants_run_and_stay_valid(structure: str, half_life: float | None) -> None:
+    model = BlendModel(min_train=40, structure=structure, train_half_life_days=half_life)
+    result = run_backtest(synthetic_league(), model, warmup_seasons=("1617",))
+    assert model.weights_trained
+    assert model.weights.structure == structure
+    assert model.weights.train_half_life_days == half_life
+    for p in result.predictions:
+        assert_valid(p.model)
+
+
+def test_training_decay_weights_recent_rows_more() -> None:
+    model = BlendModel(min_train=40, train_half_life_days=100.0)
+    run_backtest(synthetic_league(), model, warmup_seasons=("1617",))
+    as_of = model.as_of
+    w = model._sample_weights(as_of)  # noqa: SLF001
+    assert w is not None and len(w) == model.n_training_rows
+    assert w[-1] > w[0]  # rows are in date order: the newest weighs most
+    assert w.max() <= 1.0
+
+
+def test_rejects_bad_tuned_settings() -> None:
+    with pytest.raises(ValueError):
+        BlendModel(structure="diagonal")
+    with pytest.raises(ValueError):
+        BlendModel(train_half_life_days=0.0)

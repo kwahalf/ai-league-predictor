@@ -30,6 +30,11 @@ the headline is the penalty's prior, i.e. the margin-free market consensus with 
 prior (see ``logit``). In the backtest that means 2017/18, the first predicted season, is the
 consensus, and the blend is fitted from the first window of 2018/19.
 
+**Settings tuned in step 2.6.** ``structure`` (``"full"`` or ``"pool"``, see ``logit``) and
+``train_half_life_days``: when set, each training row is weighted
+``0.5 ** ((as_of − match_date) / train_half_life_days)`` at every refit, so older seasons count
+less; ``None`` (the default) weights every row equally.
+
 **Fallback.** A match with no usable pre-match 1X2 odds gets the fundamentals 1X2 as its headline,
 with ``used_odds = False``, and its score forecast is the fundamentals model's own matrix. It adds
 no training row (the logit needs the market input).
@@ -59,6 +64,7 @@ from .logit import (
     DEFAULT_FUNDAMENTALS_WEIGHT,
     DEFAULT_L2,
     DEFAULT_MARKET_WEIGHT,
+    STRUCTURES,
     BlendWeights,
     features,
     fit_blend,
@@ -144,16 +150,24 @@ class BlendModel:
         market_weight: float = DEFAULT_MARKET_WEIGHT,
         fundamentals_weight: float = DEFAULT_FUNDAMENTALS_WEIGHT,
         ou_weight: float = DEFAULT_OU_WEIGHT,
+        structure: str = "full",
+        train_half_life_days: float | None = None,
         fundamentals: DixonColesModel | None = None,
         elo: EloModel | None = None,
     ) -> None:
         if l2 <= 0:
             raise ValueError("l2 must be positive")
+        if structure not in STRUCTURES:
+            raise ValueError(f"structure must be one of {STRUCTURES}, got {structure!r}")
+        if train_half_life_days is not None and not train_half_life_days > 0:
+            raise ValueError("train_half_life_days must be positive (or None)")
         if min_train < 1:
             raise ValueError("min_train must be at least 1")
         self.l2 = l2
         self.min_train = min_train
         self.ou_weight = ou_weight
+        self.structure = structure
+        self.train_half_life_days = train_half_life_days
         self.w0 = prior_coefficients(market_weight, fundamentals_weight)
         self.fundamentals = fundamentals or DixonColesModel()
         self.elo = elo or EloModel()
@@ -165,6 +179,7 @@ class BlendModel:
         self._recorded: dict[MatchKey, tuple[float, ...]] = {}
         self._train_x: list[tuple[float, ...]] = []
         self._train_y: list[int] = []
+        self._train_dates: list[date] = []
         self._trained: BlendWeights | None = None
         self._trained_on = 0
 
@@ -187,6 +202,7 @@ class BlendModel:
             if z is not None and record.result in _OUTCOME and record.match_date < as_of:
                 self._train_x.append(z)
                 self._train_y.append(_OUTCOME[record.result])
+                self._train_dates.append(record.match_date)
         self.as_of = as_of
         n = len(self._train_y)
         # All three outcomes must have occurred: the intercepts are unpenalised, so a missing
@@ -199,13 +215,24 @@ class BlendModel:
                 l2=self.l2,
                 w0=self.w0,
                 start=self._trained,
+                sample_weight=self._sample_weights(as_of),
+                structure=self.structure,
+                train_half_life_days=self.train_half_life_days,
             )
             self._trained_on = n
+
+    def _sample_weights(self, as_of: date) -> np.ndarray | None:
+        if self.train_half_life_days is None:
+            return None
+        ages = np.array([(as_of - d).days for d in self._train_dates], dtype=float)
+        return 0.5 ** (ages / self.train_half_life_days)
 
     @property
     def weights(self) -> BlendWeights:
         """The weights in use: fitted, or the prior until ``min_train`` rows exist."""
-        return self._trained or BlendWeights.prior(self.w0, self.l2)
+        return self._trained or BlendWeights.prior(
+            self.w0, self.l2, self.structure, self.train_half_life_days
+        )
 
     @property
     def weights_trained(self) -> bool:

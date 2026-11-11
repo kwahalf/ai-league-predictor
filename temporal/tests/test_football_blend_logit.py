@@ -143,3 +143,75 @@ def test_accepts_integral_float_labels() -> None:
     a = fit_blend(x, y.astype(float), l2=10.0)
     b = fit_blend(x, y, l2=10.0)
     assert a == b
+
+
+# --- Step 2.6: the "pool" structure and sample weights -----------------------------------------
+
+
+def test_pool_gradient_matches_finite_differences() -> None:
+    from src.football.models.blend.logit import POOL_BASIS
+
+    x, y, _, _ = synthetic(200, seed=6)
+    rng = np.random.default_rng(1)
+    theta = rng.normal(0, 0.5, size=2 + 3)
+    sw = rng.uniform(0.2, 1.0, size=len(y))
+    c0 = np.array([1.0, 0.0, 0.0])
+    _, grad = penalised_nll(theta, x, y, c0, 3.0, sw, POOL_BASIS)
+    eps = 1e-6
+    for i in range(len(theta)):
+        up, down = theta.copy(), theta.copy()
+        up[i] += eps
+        down[i] -= eps
+        numeric = (
+            penalised_nll(up, x, y, c0, 3.0, sw, POOL_BASIS)[0]
+            - penalised_nll(down, x, y, c0, 3.0, sw, POOL_BASIS)[0]
+        ) / (2 * eps)
+        assert grad[i] == pytest.approx(numeric, rel=1e-4, abs=1e-4)
+
+
+def test_pool_recovers_the_pool_weights_and_has_its_shape() -> None:
+    x, y, _, _ = synthetic(6000, seed=8)  # truth: market 0.7, fundamentals 0.3, no Elo
+    w = fit_blend(x, y, l2=1.0, structure="pool")
+    assert w.structure == "pool"
+    coef = np.array(w.coefficients)
+    for k in range(3):
+        assert coef[k, 3 + k] == pytest.approx(coef[0, 3], abs=1e-12)  # one market weight
+        assert coef[k, k] == pytest.approx(coef[0, 0], abs=1e-12)  # one fundamentals weight
+    assert coef[0, 3] == pytest.approx(0.7, abs=0.15)
+    assert coef[0, 0] == pytest.approx(0.3, abs=0.15)
+    assert coef[1, 6] == 0.0 and coef[0, 6] == pytest.approx(-coef[2, 6])
+    # Off-pattern cells stay exactly zero.
+    assert coef[0, 4] == coef[0, 1] == 0.0
+
+
+def test_pool_with_overwhelming_penalty_is_the_prior() -> None:
+    x, y, _, _ = synthetic(1000, seed=9)
+    _, coef = fit_blend(x, y, l2=1e9, structure="pool").arrays()
+    np.testing.assert_allclose(coef, prior_coefficients(), atol=1e-5)
+
+
+def test_integer_sample_weights_equal_repeated_rows() -> None:
+    x, y, _, _ = synthetic(300, seed=10)
+    counts = np.random.default_rng(2).integers(1, 4, size=len(y))
+    weighted = fit_blend(x, y, l2=5.0, sample_weight=counts.astype(float))
+    repeated = fit_blend(np.repeat(x, counts, axis=0), np.repeat(y, counts), l2=5.0)
+    np.testing.assert_allclose(
+        np.array(weighted.coefficients), np.array(repeated.coefficients), atol=1e-4
+    )
+    np.testing.assert_allclose(weighted.intercepts, repeated.intercepts, atol=1e-4)
+
+
+def test_rejects_bad_structure_and_weights() -> None:
+    x, y, _, _ = synthetic(50, seed=11)
+    with pytest.raises(ValueError):
+        fit_blend(x, y, structure="diagonal")
+    with pytest.raises(ValueError):
+        fit_blend(x, y, sample_weight=np.full(len(y), -1.0))
+    with pytest.raises(ValueError):
+        fit_blend(x, y, sample_weight=np.ones(len(y) - 1))
+
+
+def test_serialised_weights_name_the_structure() -> None:
+    x, y, _, _ = synthetic(300, seed=12)
+    d = fit_blend(x, y, structure="pool", train_half_life_days=365.0).as_dict()
+    assert d["structure"] == "pool" and d["train_half_life_days"] == 365.0

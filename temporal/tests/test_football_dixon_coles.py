@@ -24,8 +24,8 @@ from src.football.backtest import cli
 from src.football.data import MatchRecord, OddsQuote, parse_season_csv
 from src.football.models.dixon_coles import fit as dc_fit
 from src.football.models.dixon_coles import (
-    DEFAULT_PROMOTED_ATTACK,
-    DEFAULT_PROMOTED_DEFENCE,
+    DEFAULT_PROMOTED_FALLBACK_ATTACK,
+    DEFAULT_PROMOTED_FALLBACK_DEFENCE,
     DixonColesModel,
     ScoreForecast,
     poisson_pmf,
@@ -338,9 +338,15 @@ def test_promoted_team_is_fitted_with_the_prior() -> None:
     # Three 3-0 home wins: unregularised, the newcomer looks elite; the prior pulls its attack
     # back toward the promoted-team mean and its defence toward the league mean + offset.
     p, q = with_prior.parameters, without.parameters
-    assert q.attack["Newcomer"] > p.attack["Newcomer"] > DEFAULT_PROMOTED_ATTACK
+    # Two seasons only, so no complete season with known promoted teams: the data-free fallback.
+    assert p.prior_source == "fallback" and p.prior_n_teams == 0
+    assert (p.prior_attack, p.prior_defence) == (
+        DEFAULT_PROMOTED_FALLBACK_ATTACK,
+        DEFAULT_PROMOTED_FALLBACK_DEFENCE,
+    )
+    assert q.attack["Newcomer"] > p.attack["Newcomer"] > p.prior_attack
     rel_def = lambda params: params.defence["Newcomer"] - params.mean_defence  # noqa: E731
-    assert rel_def(q) > rel_def(p) > DEFAULT_PROMOTED_DEFENCE
+    assert rel_def(q) > rel_def(p) > p.prior_defence
     # Established teams are barely affected by the newcomer's prior.
     assert p.attack["Team 00"] == pytest.approx(q.attack["Team 00"], abs=0.05)
 
@@ -381,7 +387,7 @@ def test_returning_team_keeps_the_prior_until_its_first_result() -> None:
     model.fit(history, date(2024, 8, 19))
     p = model.parameters
     assert p.seasons[-1] == "2425" and "Team 09" in p.attack
-    prior = (DEFAULT_PROMOTED_ATTACK, p.mean_defence + DEFAULT_PROMOTED_DEFENCE)
+    prior = (p.prior_attack, p.mean_defence + p.prior_defence)
     assert model.strengths("Team 09", "2425") == pytest.approx(prior)
     assert model.strengths("Team 01", "2425") == (p.attack["Team 01"], p.defence["Team 01"])
     assert model.strengths("Team 02", "2425") == (p.attack["Team 02"], p.defence["Team 02"])
@@ -399,7 +405,7 @@ def test_unknown_and_returning_teams_get_the_promoted_prior() -> None:
     model = DixonColesModel()
     model.fit(history, date(2023, 9, 4))
     p = model.parameters
-    prior = (DEFAULT_PROMOTED_ATTACK, p.mean_defence + DEFAULT_PROMOTED_DEFENCE)
+    prior = (p.prior_attack, p.mean_defence + p.prior_defence)
 
     # Never seen: the prior.
     assert model.strengths("Brand New FC", "2324") == pytest.approx(prior)
@@ -411,12 +417,169 @@ def test_unknown_and_returning_teams_get_the_promoted_prior() -> None:
     # Teams in the current league keep their fitted strengths into the next season.
     assert model.strengths("Team 00", "2425") == (p.attack["Team 00"], p.defence["Team 00"])
 
-    # The prior is below average: a promoted side is expected to lose to an average team at home
-    # more than an average side would.
+    # With the data-free fallback (no complete season with known promoted teams yet) a newcomer
+    # is treated as an average team.
     fc = model.forecast("Brand New FC", "Team 00", "2324")
     lam, mu = fc.expected_goals
     avg_home = math.exp(p.home_adv + 0.0 - p.defence["Team 00"])
-    assert lam < avg_home
+    assert lam == pytest.approx(avg_home)
+
+    # A fixed prior below average makes a newcomer weaker than an average side.
+    fixed = DixonColesModel(promoted_attack=-0.24, promoted_defence=-0.15)
+    fixed.fit(history, date(2023, 9, 4))
+    assert fixed.parameters.prior_source == "fixed"
+    lam_fixed, _ = fixed.forecast("Brand New FC", "Team 00", "2324").expected_goals
+    avg_fixed = math.exp(fixed.parameters.home_adv - fixed.parameters.defence["Team 00"])
+    assert lam_fixed < avg_fixed
+
+
+# --- Walk-forward promoted-team prior (step 2.6) --------------------------------------------
+
+_SEASON_STARTS = {"2021": date(2020, 8, 10), "2122": date(2021, 8, 9), "2223": date(2022, 8, 8), "2324": date(2023, 8, 7)}
+# Eight teams a season; two go down and two come up each summer. Promoted sides are weaker.
+_SEASON_TEAMS = {
+    "2021": ["A", "B", "C", "D", "E", "F", "G", "H"],
+    "2122": ["A", "B", "C", "D", "E", "F", "P1", "P2"],
+    "2223": ["A", "B", "C", "D", "P1", "P2", "P3", "P4"],
+    "2324": ["A", "B", "P1", "P2", "P3", "P4", "P5", "P6"],
+}
+_PROMOTED_INTO = {"2122": {"P1", "P2"}, "2223": {"P3", "P4"}, "2324": {"P5", "P6"}}
+
+
+def _promotion_history(seed: int = 7) -> list[MatchRecord]:
+    records: list[MatchRecord] = []
+    for k, (season, names) in enumerate(_SEASON_TEAMS.items()):
+        weak = np.array([-0.3 if n in _PROMOTED_INTO.get(season, ()) else 0.0 for n in names])
+        sim = simulate_league(
+            weak, weak, 0.25, -0.1, rounds=1, start=_SEASON_STARTS[season], seed=seed + k, season=season
+        )
+        rename = {f"Team {i:02d}": n for i, n in enumerate(names)}
+        records += [
+            dataclasses.replace(r, home_team=rename[r.home_team], away_team=rename[r.away_team])
+            for r in sim
+        ]
+    return records
+
+
+def _expected_promoted_strengths(history: list[MatchRecord], season: str) -> list[tuple[float, float]]:
+    """Independent recomputation: fit ``season`` alone (no decay, ridge only), promoted teams'
+    (attack, defence − mean defence)."""
+    matches = [r for r in history if r.season == season]
+    teams = sorted({t for r in matches for t in (r.home_team, r.away_team)})
+    idx = {t: i for i, t in enumerate(teams)}
+    n = len(teams)
+    fitted = dc_fit.fit_parameters(
+        dc_fit.FitData(
+            home=np.array([idx[r.home_team] for r in matches]),
+            away=np.array([idx[r.away_team] for r in matches]),
+            home_goals=np.array([r.home_goals for r in matches], dtype=float),
+            away_goals=np.array([r.away_goals for r in matches], dtype=float),
+            weights=np.ones(len(matches)),
+            n_teams=n,
+        ),
+        dc_fit.TeamPrior(np.zeros(n), np.zeros(n), np.full(n, 0.1)),
+    )
+    mean_def = fitted.defence.mean()
+    return [
+        (fitted.attack[idx[t]], fitted.defence[idx[t]] - mean_def)
+        for t in sorted(_PROMOTED_INTO[season])
+    ]
+
+
+def test_promoted_prior_is_estimated_from_complete_seasons_only() -> None:
+    history = _promotion_history()
+    mid_2223 = _SEASON_STARTS["2223"] + timedelta(days=21)
+    mid_2324 = _SEASON_STARTS["2324"] + timedelta(days=21)
+
+    model = DixonColesModel(min_promoted_teams=2)
+    model.fit(history, mid_2223)
+    p = model.parameters
+    # 2021 has no season before it (its promoted teams are unknown) and 2223 is still running:
+    # only 2122's two promoted teams count.
+    expected = _expected_promoted_strengths(history, "2122")
+    assert p.prior_source == "walk_forward" and p.prior_n_teams == 2
+    assert p.prior_attack == pytest.approx(np.mean([e[0] for e in expected]), abs=1e-6)
+    assert p.prior_defence == pytest.approx(np.mean([e[1] for e in expected]), abs=1e-6)
+    # The prior is what the newly promoted teams were fitted with.
+    assert p.promoted == {"P3", "P4"}
+
+    # On 31 July 2023 season 2223 doesn't count yet (no later season, before 1 August); from
+    # 1 August 2023 it does, before 2324's first match.
+    model.fit(history, date(2023, 7, 31))
+    assert model.parameters.prior_n_teams == 2
+    model.fit(history, date(2023, 8, 1))
+    assert model.parameters.prior_n_teams == 4
+
+    model.fit(history, mid_2324)
+    p = model.parameters
+    expected += _expected_promoted_strengths(history, "2223")
+    assert p.prior_n_teams == 4
+    assert p.prior_attack == pytest.approx(np.mean([e[0] for e in expected]), abs=1e-6)
+    assert p.prior_defence == pytest.approx(np.mean([e[1] for e in expected]), abs=1e-6)
+
+
+def test_promoted_prior_falls_back_until_enough_promoted_teams() -> None:
+    history = _promotion_history()
+    model = DixonColesModel()  # default: at least 3 promoted teams
+    model.fit(history, _SEASON_STARTS["2223"] + timedelta(days=21))
+    p = model.parameters
+    assert (p.prior_source, p.prior_n_teams) == ("fallback", 0)
+    assert (p.prior_attack, p.prior_defence) == (
+        DEFAULT_PROMOTED_FALLBACK_ATTACK,
+        DEFAULT_PROMOTED_FALLBACK_DEFENCE,
+    )
+    # An unseen team before its first match gets exactly the fallback prior.
+    assert model.strengths("Nobody", "2223") == pytest.approx((0.0, p.mean_defence))
+
+
+def test_results_on_or_after_as_of_do_not_change_the_promoted_prior() -> None:
+    """Leakage test: the prior used at ``as_of`` depends only on matches before ``as_of``."""
+    history = _promotion_history()
+    as_of = _SEASON_STARTS["2324"] + timedelta(days=14)
+
+    def scrambled(r: MatchRecord) -> MatchRecord:
+        if r.match_date < as_of:
+            return r
+        hg, ag = (r.away_goals or 0) + 3, r.home_goals or 0  # every later result changes
+        return dataclasses.replace(r, home_goals=hg, away_goals=ag, result="H" if hg > ag else "A" if ag > hg else "D")
+
+    variants = {
+        "full": history,
+        "truncated": [r for r in history if r.match_date < as_of],
+        "scrambled": [scrambled(r) for r in history],
+        # A later season, with its own promoted teams, appended.
+        "extended": history
+        + [
+            dataclasses.replace(r, season="2425", match_date=r.match_date + timedelta(days=364))
+            for r in history
+            if r.season == "2324"
+        ],
+    }
+    params = {}
+    for name, h in variants.items():
+        model = DixonColesModel(min_promoted_teams=2)
+        model.fit(h, as_of)
+        params[name] = model.parameters
+    base = params["full"]
+    assert base.prior_n_teams == 4  # 2122 and 2223; 2324 is in progress at as_of
+    for name, p in params.items():
+        assert (p.prior_attack, p.prior_defence, p.prior_n_teams) == (
+            base.prior_attack,
+            base.prior_defence,
+            base.prior_n_teams,
+        ), name
+        assert p.attack == base.attack and p.defence == base.defence, name
+
+    # And the converse: a result before as_of in a complete season does move the prior.
+    changed = [
+        dataclasses.replace(r, home_goals=5, away_goals=0, result="H")
+        if r.season == "2223" and r.home_team == "P3"
+        else r
+        for r in history
+    ]
+    model = DixonColesModel(min_promoted_teams=2)
+    model.fit(changed, as_of)
+    assert model.parameters.prior_attack > base.prior_attack
 
 
 # --- Real-like data -------------------------------------------------------------------------

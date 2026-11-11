@@ -14,26 +14,45 @@ in ``history`` (the current, possibly part-played, season and the two before it)
 usually poor: promoted sides score fewer and concede more than the league average. Two rules:
 
 1. *In the fit:* a team that plays in the latest season of the history but not in the season before
-   it (it was promoted this season) gets a Gaussian prior pulling its attack toward
-   ``promoted_attack`` and its defence toward ``mean(defence) + promoted_defence``, with precision
+   it (it was promoted this season) gets a Gaussian prior pulling its attack toward the prior
+   attack and its defence toward ``mean(defence) +`` the prior defence, with precision
    ``promoted_precision``. In the likelihood each match adds roughly λ ≈ 1.4 units of precision
    to a team's attack (and μ to its defence), so the default precision of 12 is worth about 8–9
    matches: after ~9 games a promoted team's own results count as much as the prior, and by the
    end of the season they dominate. Every other team gets a very weak pull (``ridge_precision``)
    toward the league average, which only matters for freak records in very few matches.
 2. *Before it has played:* until a team has a result in the season being predicted, it is given
-   the prior itself (attack ``promoted_attack``, defence ``mean(defence) + promoted_defence``)
+   the prior itself (the prior attack, and defence ``mean(defence) +`` the prior defence)
    unless it was in the league the season before: a team with no fitted strengths, or a side
    relegated earlier coming back, whose fitted strengths are stale. Established teams keep their
    fitted strengths, including one whose first fixture of a new season is delayed. See
    ``strengths``.
 
-The default prior means are the average fitted strengths of the 27 promoted teams of 2017/18 to
-2025/26 at the end of their first season, fitted without the prior (attack −0.24, defence −0.15
-relative to the league mean, rounded), i.e. about 21% fewer goals scored and 16% more conceded than
-an average team. They
-come from the same seasons the backtest scores, so they are, like the half-life, a tuned
-hyperparameter rather than an out-of-sample estimate; two numbers, so the leak is small.
+**The prior's means are estimated walk-forward** (step 2.6), at every ``fit``, from the history
+that fit is given, so they never use a result on or after ``as_of``:
+
+- A season ``S`` is *usable* when it is complete (a later season has started in the history, or
+  ``as_of`` is on or after 1 August of the season's second year, ``SEASON_END_MONTH_DAY``; every
+  Premier League season since 2016/17 ended by then, the latest on 26 July 2020) and the season
+  before it is in the history too (so its promoted teams are known: the teams of ``S`` that
+  didn't play ``S − 1``). Only matches before ``as_of`` are ever used, so the date rule can at
+  worst count a season that hasn't finished, never a future result.
+- For each usable season, the season's matches alone are fitted without decay and without the
+  promoted-team prior (only the weak ridge pull); each promoted team contributes its attack and
+  its defence minus that fit's mean defence. Those per-season fits are cached, since a complete
+  season's matches don't change.
+- The prior means are the plain average over all those promoted teams. Until at least
+  ``min_promoted_teams`` (default 3, one season's worth) exist, the documented data-free
+  fallback is used: ``DEFAULT_PROMOTED_FALLBACK_ATTACK`` and ``DEFAULT_PROMOTED_FALLBACK_DEFENCE``,
+  both 0, i.e. "a promoted team is an average team" (no information, so no claimed handicap).
+  With the E0 files from 2016/17 that means the fallback for 2017/18 only (2016/17's promoted
+  teams can't be identified: 2015/16 isn't loaded), 3 teams from the first window of 2018/19 on,
+  and 27 by 2025/26.
+
+Before step 2.6 the means were fixed at −0.24 / −0.15, averaged from the promoted teams of
+2017/18–2025/26, i.e. the same seasons the backtest scores (a leak). Passing ``promoted_attack``
+and ``promoted_defence`` still fixes them (for tests and experiments); by default both are
+``None`` and the walk-forward estimate is used.
 """
 
 from __future__ import annotations
@@ -52,8 +71,18 @@ from .score_matrix import DEFAULT_MAX_GOALS, ScoreForecast
 
 DEFAULT_HALF_LIFE_DAYS = 180.0
 DEFAULT_N_SEASONS = 3
-DEFAULT_PROMOTED_ATTACK = -0.24
-DEFAULT_PROMOTED_DEFENCE = -0.15
+DEFAULT_PROMOTED_FALLBACK_ATTACK = 0.0
+DEFAULT_PROMOTED_FALLBACK_DEFENCE = 0.0
+DEFAULT_MIN_PROMOTED_TEAMS = 3
+SEASON_END_MONTH_DAY = (8, 1)
+"""A season ``"SSEE"`` counts as complete from 1 August of year ``20EE`` (see the docstring)."""
+
+
+def _season_complete_by(season: str) -> date | None:
+    """1 August of the season's second year for a code like ``"1718"``; ``None`` otherwise."""
+    if len(season) != 4 or not season.isdigit():
+        return None
+    return date(2000 + int(season[2:]), *SEASON_END_MONTH_DAY)
 DEFAULT_PROMOTED_PRECISION = 12.0
 DEFAULT_RIDGE_PRECISION = 0.1
 
@@ -78,6 +107,14 @@ class DixonColesParameters:
     """Teams that played in the season before that (empty if the history has only one season)."""
     n_matches: int
     converged: bool
+    prior_attack: float
+    """Mean of the promoted-team prior on attack used in this fit (see the module docstring)."""
+    prior_defence: float
+    """Mean of the promoted-team prior on defence, relative to the league mean defence."""
+    prior_n_teams: int
+    """Promoted teams the prior was estimated from; 0 when it is fixed or the fallback."""
+    prior_source: str
+    """``"walk_forward"`` (estimated from the history), ``"fallback"`` or ``"fixed"``."""
 
     @property
     def mean_defence(self) -> float:
@@ -86,6 +123,22 @@ class DixonColesParameters:
 
 def _teams_in(matches: Sequence[MatchRecord], season: str) -> set[str]:
     return {t for r in matches if r.season == season for t in (r.home_team, r.away_team)}
+
+
+_SeasonKey = tuple[str, tuple[tuple[date, str, str, int, int], ...]]
+
+
+def _fit_data(
+    matches: Sequence[MatchRecord], index: Mapping[str, int], weights: np.ndarray
+) -> FitData:
+    return FitData(
+        home=np.array([index[r.home_team] for r in matches]),
+        away=np.array([index[r.away_team] for r in matches]),
+        home_goals=np.array([r.home_goals for r in matches], dtype=float),
+        away_goals=np.array([r.away_goals for r in matches], dtype=float),
+        weights=weights,
+        n_teams=len(index),
+    )
 
 
 class DixonColesModel:
@@ -99,10 +152,13 @@ class DixonColesModel:
         half_life_days: float | None = DEFAULT_HALF_LIFE_DAYS,
         n_seasons: int = DEFAULT_N_SEASONS,
         max_goals: int = DEFAULT_MAX_GOALS,
-        promoted_attack: float = DEFAULT_PROMOTED_ATTACK,
-        promoted_defence: float = DEFAULT_PROMOTED_DEFENCE,
+        promoted_attack: float | None = None,
+        promoted_defence: float | None = None,
         promoted_precision: float = DEFAULT_PROMOTED_PRECISION,
         ridge_precision: float = DEFAULT_RIDGE_PRECISION,
+        min_promoted_teams: int = DEFAULT_MIN_PROMOTED_TEAMS,
+        fallback_attack: float = DEFAULT_PROMOTED_FALLBACK_ATTACK,
+        fallback_defence: float = DEFAULT_PROMOTED_FALLBACK_DEFENCE,
     ) -> None:
         if half_life_days is not None and not half_life_days > 0:
             raise ValueError("half_life_days must be positive (or None for no decay)")
@@ -110,6 +166,10 @@ class DixonColesModel:
             raise ValueError("n_seasons must be at least 1")
         if promoted_precision < 0 or ridge_precision < 0:
             raise ValueError("prior precisions must be non-negative")
+        if (promoted_attack is None) != (promoted_defence is None):
+            raise ValueError("fix both promoted_attack and promoted_defence, or neither")
+        if min_promoted_teams < 1:
+            raise ValueError("min_promoted_teams must be at least 1")
         self.half_life_days = half_life_days
         self.n_seasons = n_seasons
         self.max_goals = max_goals
@@ -117,6 +177,12 @@ class DixonColesModel:
         self.promoted_defence = promoted_defence
         self.promoted_precision = promoted_precision
         self.ridge_precision = ridge_precision
+        self.min_promoted_teams = min_promoted_teams
+        self.fallback_attack = fallback_attack
+        self.fallback_defence = fallback_defence
+        # Promoted teams' (attack, defence − mean defence) per complete season, keyed by the
+        # season's matches, so a cached entry is only reused for identical data.
+        self._season_cache: dict[_SeasonKey, list[tuple[float, float]]] = {}
         self._params: DixonColesParameters | None = None
 
     # --- fitting ---------------------------------------------------------------------------
@@ -147,18 +213,14 @@ class DixonColesModel:
             weights = np.ones_like(ages)
         else:
             weights = 0.5 ** (ages / self.half_life_days)
-        data = FitData(
-            home=np.array([index[r.home_team] for r in matches]),
-            away=np.array([index[r.away_team] for r in matches]),
-            home_goals=np.array([r.home_goals for r in matches], dtype=float),
-            away_goals=np.array([r.away_goals for r in matches], dtype=float),
-            weights=weights,
-            n_teams=len(teams),
+        data = _fit_data(matches, index, weights)
+        prior_attack, prior_defence, prior_n, prior_source = self._promoted_prior(
+            played, all_seasons, as_of
         )
         is_promoted = np.array([t in promoted for t in teams])
         prior = TeamPrior(
-            attack_mean=np.where(is_promoted, self.promoted_attack, 0.0),
-            defence_mean=np.where(is_promoted, self.promoted_defence, 0.0),
+            attack_mean=np.where(is_promoted, prior_attack, 0.0),
+            defence_mean=np.where(is_promoted, prior_defence, 0.0),
             precision=np.where(is_promoted, self.promoted_precision, self.ridge_precision),
         )
         fitted = fit_parameters(data, prior)
@@ -174,7 +236,73 @@ class DixonColesModel:
             previous_teams=frozenset(previous),
             n_matches=len(matches),
             converged=fitted.converged,
+            prior_attack=prior_attack,
+            prior_defence=prior_defence,
+            prior_n_teams=prior_n,
+            prior_source=prior_source,
         )
+
+    def _promoted_prior(
+        self, played: Sequence[MatchRecord], seasons: Sequence[str], as_of: date
+    ) -> tuple[float, float, int, str]:
+        """(attack mean, defence mean, teams used, source) of the promoted-team prior, from
+        ``played`` only (matches before ``as_of``). See the module docstring."""
+        if self.promoted_attack is not None and self.promoted_defence is not None:
+            return self.promoted_attack, self.promoted_defence, 0, "fixed"
+        by_season: dict[str, list[MatchRecord]] = {}
+        for r in played:
+            by_season.setdefault(r.season, []).append(r)
+        values: list[tuple[float, float]] = []
+        # Usable: the season before is in the history, and this one is complete (a later season
+        # has started, or its end date has passed). seasons is sorted, so seasons[i - 1] is the
+        # one before seasons[i].
+        for i in range(1, len(seasons)):
+            end = _season_complete_by(seasons[i])
+            if i == len(seasons) - 1 and (end is None or as_of < end):
+                continue
+            values.extend(
+                self._season_promoted_strengths(
+                    seasons[i], by_season[seasons[i]], _teams_in(by_season[seasons[i - 1]], seasons[i - 1])
+                )
+            )
+        if len(values) < self.min_promoted_teams:
+            return self.fallback_attack, self.fallback_defence, 0, "fallback"
+        attack = float(np.mean([v[0] for v in values]))
+        defence = float(np.mean([v[1] for v in values]))
+        return attack, defence, len(values), "walk_forward"
+
+    def _season_promoted_strengths(
+        self, season: str, matches: Sequence[MatchRecord], previous_teams: set[str]
+    ) -> list[tuple[float, float]]:
+        """(attack, defence − mean defence) of each team promoted into ``season``, from a fit of
+        that season's matches alone: no decay, no promoted-team prior, only the ridge pull."""
+        key: _SeasonKey = (
+            season,
+            tuple(
+                (r.match_date, r.home_team, r.away_team, int(r.home_goals), int(r.away_goals))  # type: ignore[arg-type]
+                for r in matches
+            ),
+        )
+        cached = self._season_cache.get(key)
+        if cached is not None:
+            return cached
+        promoted = sorted(_teams_in(matches, season) - previous_teams)
+        result: list[tuple[float, float]] = []
+        if promoted:
+            teams = sorted(_teams_in(matches, season))
+            index = {t: i for i, t in enumerate(teams)}
+            n = len(teams)
+            fitted = fit_parameters(
+                _fit_data(matches, index, np.ones(len(matches))),
+                TeamPrior(np.zeros(n), np.zeros(n), np.full(n, self.ridge_precision)),
+            )
+            mean_def = float(fitted.defence.mean())
+            result = [
+                (float(fitted.attack[index[t]]), float(fitted.defence[index[t]]) - mean_def)
+                for t in promoted
+            ]
+        self._season_cache[key] = result
+        return result
 
     @property
     def parameters(self) -> DixonColesParameters:
@@ -199,7 +327,7 @@ class DixonColesModel:
         )
         if team in p.attack and in_league:
             return p.attack[team], p.defence[team]
-        return self.promoted_attack, p.mean_defence + self.promoted_defence
+        return p.prior_attack, p.mean_defence + p.prior_defence
 
     def expected_goals(
         self, home_team: str, away_team: str, season: str | None = None

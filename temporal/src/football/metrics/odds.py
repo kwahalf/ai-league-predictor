@@ -2,6 +2,11 @@
 
 See the spec, "Removing the margin": ``1/odds`` sums to more than 1; the excess is the bookmaker's
 margin. The proportional method divides each ``1/odds`` by the sum, so the result sums to 1.
+
+Shin's method (``remove_margin_shin``; Shin 1993) is the alternative the spec's open question
+names: it models the margin as protection against a share ``z`` of insider money, which takes
+more margin off longshots than off favourites (the favourite–longshot bias). Step 2.6 compared the
+two on the tuning seasons; see the spec's "Open Questions" for the outcome.
 """
 
 from __future__ import annotations
@@ -42,6 +47,38 @@ def remove_margin(odds: Sequence[float]) -> MarginFree:
         probabilities=tuple(p / total for p in implied),
         margin=total - 1.0,
     )
+
+
+def remove_margin_shin(odds: Sequence[float], *, tol: float = 1e-12) -> MarginFree:
+    """Shin's margin removal: ``p_i = (sqrt(z² + 4(1 − z)·π_i²/Π) − z) / (2(1 − z))`` with
+    ``π_i = 1/o_i`` and ``Π = Σ π_i``, where the insider share ``z`` in [0, 1) is the one that makes
+    the ``p_i`` sum to 1 (found by bisection; the sum falls as ``z`` grows). With no margin
+    (``Π ≤ 1``) ``z`` is 0 and the result is the proportional one. Same validation as
+    ``remove_margin``."""
+    base = remove_margin(odds)  # validates; also the answer when there is no margin
+    if base.margin <= 0.0:
+        return base
+    implied = [1.0 / float(o) for o in odds]
+    total = math.fsum(implied)
+
+    def probs(z: float) -> list[float]:
+        return [
+            (math.sqrt(z * z + 4.0 * (1.0 - z) * pi * pi / total) - z) / (2.0 * (1.0 - z))
+            for pi in implied
+        ]
+
+    lo, hi = 0.0, 1.0 - 1e-12
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if math.fsum(probs(mid)) > 1.0:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < tol:
+            break
+    p = probs(0.5 * (lo + hi))
+    s = math.fsum(p)  # 1 within the tolerance; divide so it is 1 to rounding
+    return MarginFree(probabilities=tuple(x / s for x in p), margin=base.margin)
 
 
 def consensus(
