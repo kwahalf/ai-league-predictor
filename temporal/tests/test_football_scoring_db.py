@@ -194,3 +194,14 @@ def test_market_scores_are_written_once_and_a_rerun_changes_nothing(setup):
     consensus = {"match_id": match_id, "bookmaker_id": None, "snapshot": "pre_match", "p_home": 0.5,
                  "p_draw": 0.3, "p_away": 0.2, "rps": 0.1, "log_loss": 0.1, "brier": 0.1}
     assert _rest_error("market_scores", "POST", consensus)["code"] == "23505"
+
+
+def test_a_batch_from_changed_inputs_is_refused(setup):
+    gateway, _ = setup
+    inputs = gateway.rpc("football_market_score_inputs", {"p_division": "E0", "p_season": SEASON})
+    assert len(inputs["matches"]) == 3 and inputs["revision"]
+    counts = gateway.rpc(
+        "football_upsert_market_scores",
+        {"p_division": "E0", "p_season": SEASON, "p_revision": "not-the-revision", "p_scores": []},
+    )
+    assert counts == {"inserted": 0, "updated": 0, "deleted": 0, "stale": True}

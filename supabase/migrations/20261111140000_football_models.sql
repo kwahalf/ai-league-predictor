@@ -115,7 +115,8 @@ as $$
   end
 $$;
 
--- Before insert: stamp created_at with the database clock and reject a prediction made at or after
+-- Before insert: stamp created_at with the database clock at the moment of the insert
+-- (clock_timestamp(), not now(), which is fixed when the transaction starts) and reject a prediction made at or after
 -- the deadline above, or for a match that is not scheduled (finished or postponed).
 create or replace function public.football_predictions_before_kickoff()
 returns trigger
@@ -128,7 +129,7 @@ declare
   v_status text;
   v_deadline timestamptz;
 begin
-  new.created_at := now();
+  new.created_at := clock_timestamp();
   select kickoff_at, status into v_kickoff_at, v_status from matches where id = new.match_id;
   if not found then
     return new; -- the foreign key reports the missing match
@@ -180,13 +181,15 @@ create trigger predictions_no_truncate
 
 -- Scores of a prediction once the match is finished: one row per layer. Written by ScoreWorkflow
 -- (step 2.7). RPS in [0, 1], log loss >= 0 (the metrics clip at 1e-15, so at most ~34.54),
--- Brier (summed over outcomes) in [0, 2].
+-- Brier (summed over outcomes) in [0, 2]. The upper bounds allow 1e-4 of slack: probabilities may
+-- sum to 1 within 1e-5, and e.g. (1.0, 0.000001, 0.0) scored against an away win gives RPS
+-- 1.000001, which must still be storable.
 create table if not exists prediction_scores (
   prediction_id uuid not null references predictions(id) on delete restrict,
   layer text not null check (layer in ('headline', 'fundamentals', 'elo')),
-  rps double precision not null check (rps between 0 and 1),
+  rps double precision not null check (rps between 0 and 1.0001),
   log_loss double precision not null check (log_loss >= 0 and log_loss < 'infinity'),
-  brier double precision not null check (brier between 0 and 2),
+  brier double precision not null check (brier between 0 and 2.0001),
   scored_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -206,9 +209,9 @@ create table if not exists market_scores (
   p_home double precision not null check (p_home between 0 and 1),
   p_draw double precision not null check (p_draw between 0 and 1),
   p_away double precision not null check (p_away between 0 and 1),
-  rps double precision not null check (rps between 0 and 1),
+  rps double precision not null check (rps between 0 and 1.0001),
   log_loss double precision not null check (log_loss >= 0 and log_loss < 'infinity'),
-  brier double precision not null check (brier between 0 and 2),
+  brier double precision not null check (brier between 0 and 2.0001),
   -- When these values were computed; moves only when a value changes.
   scored_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
@@ -251,18 +254,71 @@ grant all on model_versions, team_ratings, prediction_scores, market_scores to s
 -- Append-only for the worker too (the triggers enforce it for everyone, owners included).
 grant select, insert on predictions to service_role;
 
--- Write one batch of market scores.
+-- The inputs for scoring the market on one season: every match of the season (so stale scores of
+-- matches that lost their result can be removed), with its result and its pre-match and closing
+-- 1X2 prices per source. Internal: the two RPCs below use it.
+create or replace function public.football_market_score_rows(p_division text, p_season text)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  select coalesce(jsonb_agg(m.row order by m.kickoff_at, m.id), '[]'::jsonb)
+  from (
+    select mt.id, mt.kickoff_at,
+           jsonb_build_object(
+             'match_id', mt.id,
+             'status', mt.status,
+             'home_goals', mt.home_goals,
+             'away_goals', mt.away_goals,
+             'odds', coalesce((
+               select jsonb_agg(jsonb_build_object(
+                        'source', b.code, 'snapshot', o.snapshot,
+                        'home', o.home, 'draw', o.draw, 'away', o.away)
+                      order by b.code, o.snapshot)
+               from odds o
+               join bookmakers b on b.id = o.bookmaker_id
+               where o.match_id = mt.id and o.snapshot in ('pre_match', 'closing')
+             ), '[]'::jsonb)
+           ) as row
+    from matches mt
+    join leagues l on l.id = mt.league_id
+    where l.code = p_division and mt.season = p_season
+  ) m
+$$;
+
+-- {"revision": md5 of the inputs, "matches": [...]}. The worker scores "matches" and sends the
+-- revision back with the scores, so a batch computed from inputs that have changed since is refused.
+create or replace function public.football_market_score_inputs(p_division text, p_season text)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  select jsonb_build_object('revision', md5(r::text), 'matches', r)
+  from football_market_score_rows(p_division, p_season) as r
+$$;
+
+-- Write the market scores of one season.
 --
---   p_match_ids  the matches this batch covers (e.g. every match of a season)
---   p_scores     [{"match_id", "bookmaker" (code, or null for the consensus), "snapshot",
---                  "p_home", "p_draw", "p_away", "rps", "log_loss", "brier"}]
+--   p_division, p_season  the season the scores are for; the batch covers every match of it
+--   p_revision            the revision football_market_score_inputs returned with the inputs
+--   p_scores              [{"match_id", "bookmaker" (code, or null for the consensus), "snapshot",
+--                           "p_home", "p_draw", "p_away", "rps", "log_loss", "brier"}]
 --
--- The batch is the truth for the matches it covers: a stored score of a covered match that the
--- batch no longer has (its odds were removed, or the match lost its result) is deleted. Updates
--- have an IS DISTINCT FROM guard, so re-sending the same scores changes no row and no updated_at
--- or scored_at. Batches are serialised (advisory lock). Returns rows inserted, updated, deleted.
+-- Batches are serialised (advisory lock). Under the lock the season's inputs are read again: if
+-- they no longer match p_revision (an ingest, or an overlapping run, changed them after this batch
+-- was computed), nothing is written and {"stale": true} is returned, so the caller re-reads and
+-- re-scores. Otherwise the batch is the truth for the season: a stored score of one of its matches
+-- that the batch no longer has (its odds were removed, or the match lost its result) is deleted.
+-- Updates have an IS DISTINCT FROM guard, so re-sending the same scores changes no row and no
+-- updated_at or scored_at. Returns rows inserted, updated, deleted and stale.
 create or replace function public.football_upsert_market_scores(
-  p_match_ids jsonb,
+  p_division text,
+  p_season text,
+  p_revision text,
   p_scores jsonb
 ) returns jsonb
 language plpgsql
@@ -273,36 +329,44 @@ declare
   v_inserted int := 0;
   v_updated int := 0;
   v_deleted int := 0;
+  v_rows jsonb;
+  v_covered uuid[];
   v_problem text;
 begin
-  if jsonb_typeof(p_match_ids) is distinct from 'array' or jsonb_typeof(p_scores) is distinct from 'array' then
-    raise exception using errcode = '22023', message = 'p_match_ids and p_scores must be JSON arrays';
+  if jsonb_typeof(p_scores) is distinct from 'array' then
+    raise exception using errcode = '22023', message = 'p_scores must be a JSON array';
+  end if;
+  if p_revision is null then
+    raise exception using errcode = '22023', message = 'p_revision is required';
   end if;
 
   perform pg_advisory_xact_lock(hashtext('football_upsert_market_scores'));
+
+  v_rows := football_market_score_rows(p_division, p_season);
+  if md5(v_rows::text) is distinct from p_revision then
+    return jsonb_build_object('inserted', 0, 'updated', 0, 'deleted', 0, 'stale', true);
+  end if;
+
+  v_covered := array(select (r ->> 'match_id')::uuid from jsonb_array_elements(v_rows) as r);
 
   select format('match %s bookmaker %s', s.match_id, coalesce(s.bookmaker, 'consensus'))
   into v_problem
   from jsonb_to_recordset(p_scores) as s(match_id uuid, bookmaker text)
   left join bookmakers b on b.code = s.bookmaker
-  where (s.bookmaker is not null and b.id is null)
-     or not (p_match_ids @> jsonb_build_array(s.match_id::text))
+  where (s.bookmaker is not null and b.id is null) or not (s.match_id = any (v_covered))
   limit 1;
   if v_problem is not null then
     raise exception using errcode = '22023',
-      message = format('market score for %s has an unknown bookmaker or a match outside p_match_ids', v_problem);
+      message = format('market score for %s has an unknown bookmaker or a match outside season %s', v_problem, p_season);
   end if;
 
-  with covered as (
-    select (value #>> '{}')::uuid as match_id from jsonb_array_elements(p_match_ids)
-  ), incoming as (
+  with incoming as (
     select s.match_id, b.id as bookmaker_id, s.snapshot
     from jsonb_to_recordset(p_scores) as s(match_id uuid, bookmaker text, snapshot text)
     left join bookmakers b on b.code = s.bookmaker
   ), gone as (
     delete from market_scores ms
-    using covered c
-    where ms.match_id = c.match_id
+    where ms.match_id = any (v_covered)
       and not exists (
         select 1 from incoming i
         where i.match_id = ms.match_id
@@ -342,42 +406,8 @@ begin
   into v_inserted, v_updated
   from up;
 
-  return jsonb_build_object('inserted', v_inserted, 'updated', v_updated, 'deleted', v_deleted);
+  return jsonb_build_object('inserted', v_inserted, 'updated', v_updated, 'deleted', v_deleted, 'stale', false);
 end;
-$$;
-
--- The inputs for scoring the market on one season: every match of the season (so stale scores of
--- matches that lost their result can be removed), with its result and its pre-match and closing
--- 1X2 prices per source.
-create or replace function public.football_market_score_inputs(p_division text, p_season text)
-returns jsonb
-language sql
-stable
-security invoker
-set search_path = public, pg_temp
-as $$
-  select coalesce(jsonb_agg(m.row order by m.kickoff_at, m.id), '[]'::jsonb)
-  from (
-    select mt.id, mt.kickoff_at,
-           jsonb_build_object(
-             'match_id', mt.id,
-             'status', mt.status,
-             'home_goals', mt.home_goals,
-             'away_goals', mt.away_goals,
-             'odds', coalesce((
-               select jsonb_agg(jsonb_build_object(
-                        'source', b.code, 'snapshot', o.snapshot,
-                        'home', o.home, 'draw', o.draw, 'away', o.away)
-                      order by b.code, o.snapshot)
-               from odds o
-               join bookmakers b on b.id = o.bookmaker_id
-               where o.match_id = mt.id and o.snapshot in ('pre_match', 'closing')
-             ), '[]'::jsonb)
-           ) as row
-    from matches mt
-    join leagues l on l.id = mt.league_id
-    where l.code = p_division and mt.season = p_season
-  ) m
 $$;
 
 -- Only the worker (service role) may call these. Supabase's default privileges grant EXECUTE on
@@ -385,10 +415,12 @@ $$;
 revoke all on function public.football_prediction_deadline(timestamptz) from public, anon, authenticated;
 revoke all on function public.football_predictions_before_kickoff() from public, anon, authenticated;
 revoke all on function public.football_predictions_append_only() from public, anon, authenticated;
-revoke all on function public.football_upsert_market_scores(jsonb, jsonb) from public, anon, authenticated;
+revoke all on function public.football_market_score_rows(text, text) from public, anon, authenticated;
 revoke all on function public.football_market_score_inputs(text, text) from public, anon, authenticated;
+revoke all on function public.football_upsert_market_scores(text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.football_prediction_deadline(timestamptz) to service_role;
-grant execute on function public.football_upsert_market_scores(jsonb, jsonb) to service_role;
+grant execute on function public.football_market_score_rows(text, text) to service_role;
 grant execute on function public.football_market_score_inputs(text, text) to service_role;
+grant execute on function public.football_upsert_market_scores(text, text, text, jsonb) to service_role;
 
 notify pgrst, 'reload schema';

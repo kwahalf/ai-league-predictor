@@ -34,7 +34,7 @@ CONSENSUS = "consensus"
 @dataclass(frozen=True)
 class SeasonScores:
     match_ids: list[str]
-    """Every match given, scored or not: the RPC replaces the stored scores of all of them."""
+    """Every match given, scored or not."""
     rows: list[dict[str, Any]]
     matches_scored: int
     quotes_skipped: int
@@ -110,7 +110,7 @@ def score_match(match: Mapping[str, Any]) -> tuple[list[dict[str, Any]], int]:
 
 
 def score_season(matches: Iterable[Mapping[str, Any]]) -> SeasonScores:
-    """Score every finished match of a season (as returned by ``football_market_score_inputs``)."""
+    """Score every finished match of a season (``matches`` of ``football_market_score_inputs``)."""
     match_ids: list[str] = []
     rows: list[dict[str, Any]] = []
     scored = skipped = 0

@@ -5,6 +5,10 @@
 one call to ``football_upsert_market_scores``, which only writes rows whose values changed. Step 2.7
 runs the same activity after each ingest.
 
+The inputs come with a revision (a hash of them) that goes back with the scores. If the inputs
+changed in between (an ingest, or an overlapping run), the RPC writes nothing and reports the batch
+stale; the activity then fails with a retryable error, and the retry re-reads and re-scores.
+
 Synchronous (blocking HTTP), so the worker runs it on its thread pool. Built by
 ``build_activities`` so tests can inject a fake gateway, like the ingest activities.
 """
@@ -43,16 +47,26 @@ def score_market(gateway: RpcGateway, ref: SeasonRef) -> MarketScoreResult:
     if not ref.division.isalnum():
         raise ApplicationError(f"Bad division {ref.division!r}", type="BadRequest", non_retryable=True)
 
-    matches = gateway.rpc(INPUTS_RPC, {"p_division": ref.division, "p_season": ref.season}) or []
+    inputs = gateway.rpc(INPUTS_RPC, {"p_division": ref.division, "p_season": ref.season}) or {}
     try:
-        scores = score_season(matches)
+        revision = inputs["revision"]
+        scores = score_season(inputs["matches"])
     except (KeyError, TypeError, ValueError) as exc:
         # Bad stored data doesn't improve on retry.
         raise ApplicationError(
             f"Cannot score season {ref.season}: {exc}", type="ScoringError", non_retryable=True
         ) from exc
 
-    counts = gateway.rpc(UPSERT_RPC, {"p_match_ids": scores.match_ids, "p_scores": scores.rows}) or {}
+    counts = gateway.rpc(
+        UPSERT_RPC,
+        {"p_division": ref.division, "p_season": ref.season, "p_revision": revision, "p_scores": scores.rows},
+    ) or {}
+    if counts.get("stale"):
+        # Retryable: the next attempt reads the new inputs.
+        raise ApplicationError(
+            f"Market inputs of season {ref.season} changed while it was being scored; nothing written",
+            type="StaleInputs",
+        )
     result = MarketScoreResult(
         season=ref.season,
         matches=len(scores.match_ids),
