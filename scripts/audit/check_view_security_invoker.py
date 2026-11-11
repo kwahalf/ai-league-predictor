@@ -5,8 +5,11 @@ the owner's privileges and bypasses base-table RLS. The frontend queries views, 
 this makes RLS non-load-bearing on the real surface even after anon read is removed
 (see #272). Existence-only SQL tests never catch this.
 
-Heuristic (textual, no SQL-parser dep): for each `CREATE [OR REPLACE] VIEW <name>`,
-inspect the text up to the view body (`AS`) for `security_invoker`.
+Heuristic (textual, no SQL-parser dep): SQL comments are blanked out first, then for
+each `CREATE [OR REPLACE] VIEW <name>` the text up to the view body (`AS`) is searched
+for the `security_invoker` option and its value is parsed. Only a true value
+(`true`/`on`/`yes`/`1`, or the bare option, which Postgres reads as true) is safe;
+`false`/`off`/`no`/`0`, an unrecognised value, or no option at all is a finding.
 """
 from __future__ import annotations
 
@@ -25,13 +28,87 @@ _CREATE_VIEW = re.compile(
     re.IGNORECASE,
 )
 
+# `security_invoker` with an optional `= value`; the value may be quoted.
+_SECURITY_INVOKER = re.compile(
+    r"\bsecurity_invoker\b(?:\s*=\s*('[^']*'|\"[^\"]*\"|[A-Za-z0-9_]+))?",
+    re.IGNORECASE,
+)
+# Postgres boolean spellings it accepts for reloptions.
+_TRUE_VALUES = {"true", "on", "yes", "1", "t", "y"}
+
+
+def strip_sql_comments(text: str) -> str:
+    """Blank out `--` and `/* */` comments, keeping newlines so line numbers hold.
+
+    Single-quoted strings, double-quoted identifiers and dollar-quoted bodies are
+    skipped so comment markers inside them are left alone.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if text.startswith("--", i):
+            end = text.find("\n", i)
+            end = n if end == -1 else end
+            out.append(" " * (end - i))
+            i = end
+        elif text.startswith("/*", i):
+            # Postgres block comments nest.
+            depth, j = 1, i + 2
+            while j < n and depth:
+                if text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            out.append("".join(c if c == "\n" else " " for c in text[i:j]))
+            i = j
+        elif ch in ("'", '"'):
+            j = i + 1
+            while j < n:
+                if text[j] == ch:
+                    if j + 1 < n and text[j + 1] == ch:  # doubled quote escape
+                        j += 2
+                        continue
+                    break
+                j += 1
+            out.append(text[i : j + 1])
+            i = j + 1
+        elif ch == "$":
+            m = re.match(r"\$[A-Za-z_]*\$", text[i:])
+            if m:
+                tag = m.group(0)
+                end = text.find(tag, i + len(tag))
+                end = n if end == -1 else end + len(tag)
+                out.append(text[i:end])
+                i = end
+            else:
+                out.append(ch)
+                i += 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def security_invoker_enabled(header: str) -> bool:
+    """True when the view header sets `security_invoker` to a true value."""
+    match = _SECURITY_INVOKER.search(header)
+    if not match:
+        return False
+    value = match.group(1)
+    if value is None:  # bare `WITH (security_invoker)` means true
+        return True
+    return value.strip("'\"").lower() in _TRUE_VALUES
+
 
 def scan_migrations(migrations_dir: Path) -> list[Finding]:
     findings_by_view: dict[str, Finding] = {}
     if not migrations_dir.exists():
         return []
     for path in sorted(migrations_dir.glob("*.sql")):
-        text = path.read_text(encoding="utf-8")
+        text = strip_sql_comments(path.read_text(encoding="utf-8"))
         rel = f"supabase/migrations/{path.name}"
         for m in _CREATE_VIEW.finditer(text):
             view_name = m.group(1)
@@ -40,7 +117,7 @@ def scan_migrations(migrations_dir: Path) -> list[Finding]:
             tail = text[m.end():]
             as_match = re.search(r"\bas\b", tail, re.IGNORECASE)
             header = tail[: as_match.start()] if as_match else tail[:200]
-            if "security_invoker" in header.lower():
+            if security_invoker_enabled(header):
                 findings_by_view.pop(normalized_view_name, None)
                 continue
 
