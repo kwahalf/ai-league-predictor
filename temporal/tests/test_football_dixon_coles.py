@@ -28,6 +28,7 @@ from src.football.models.dixon_coles import (
     DEFAULT_PROMOTED_DEFENCE,
     DixonColesModel,
     ScoreForecast,
+    poisson_pmf,
     score_matrix,
     tau_factors,
 )
@@ -129,6 +130,17 @@ def test_score_matrix_rejects_bad_input() -> None:
             ScoreForecast.from_rates(1.0, 1.0).over_under(line)
     over, under = ScoreForecast.from_rates(1.0, 1.0).over_under(0.5)
     assert under == pytest.approx(score_matrix(1.0, 1.0)[0, 0])
+
+
+def test_extreme_rates_do_not_underflow() -> None:
+    matrix = score_matrix(1000.0, 1.0)  # every Poisson(k; 1000) for k <= 10 underflows to 0
+    assert np.isfinite(matrix).all() and abs(matrix.sum() - 1.0) <= 1e-9
+    # Truncated at 10 goals, the mass piles up on the last rows: P(9)/P(10) = 10/1000.
+    assert matrix[10, :].sum() == pytest.approx(1 / (1 + 10 / 1000 + 90 / 1000**2), rel=1e-6)
+    # Ordinary rates give the same matrix as the direct product of Poisson probabilities.
+    direct = np.outer(poisson_pmf(1.4, 10), poisson_pmf(1.1, 10))
+    direct[:2, :2] *= tau_factors(1.4, 1.1, -0.1)
+    np.testing.assert_allclose(score_matrix(1.4, 1.1, -0.1), direct / direct.sum(), rtol=1e-12)
 
 
 def test_negative_tau_is_floored_at_zero() -> None:

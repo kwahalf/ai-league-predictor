@@ -35,11 +35,15 @@ import numpy as np
 DEFAULT_MAX_GOALS = 10
 
 
-def poisson_pmf(rate: float, max_goals: int) -> np.ndarray:
-    """``P(k; rate)`` for ``k = 0..max_goals``."""
+def _log_poisson_pmf(rate: float, max_goals: int) -> np.ndarray:
     k = np.arange(max_goals + 1)
     log_fact = np.array([lgamma(i + 1.0) for i in k])
-    return np.exp(k * np.log(rate) - rate - log_fact)
+    return k * np.log(rate) - rate - log_fact
+
+
+def poisson_pmf(rate: float, max_goals: int) -> np.ndarray:
+    """``P(k; rate)`` for ``k = 0..max_goals``."""
+    return np.exp(_log_poisson_pmf(rate, max_goals))
 
 
 def tau_factors(lam: float, mu: float, rho: float) -> np.ndarray:
@@ -58,9 +62,16 @@ def score_matrix(
     if max_goals < 1:
         raise ValueError("max_goals must be at least 1")
     tau = np.maximum(tau_factors(lam, mu, rho), 0.0)
-    matrix = np.outer(poisson_pmf(lam, max_goals), poisson_pmf(mu, max_goals))
+    # Each side's probabilities are rescaled in log space (largest = 1) before exponentiating, so
+    # extreme rates (e.g. trial values in a solver) can't underflow the whole grid to zero. The
+    # scale factors cancel in the final normalisation.
+    log_home, log_away = _log_poisson_pmf(lam, max_goals), _log_poisson_pmf(mu, max_goals)
+    matrix = np.outer(np.exp(log_home - log_home.max()), np.exp(log_away - log_away.max()))
     matrix[:2, :2] *= tau
-    return matrix / matrix.sum()
+    total = matrix.sum()
+    if not (total > 0 and np.isfinite(total)):
+        raise ValueError(f"no probability mass left for λ={lam}, μ={mu}, ρ={rho}")
+    return matrix / total
 
 
 @dataclass(frozen=True)
