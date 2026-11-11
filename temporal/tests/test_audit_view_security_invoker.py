@@ -118,6 +118,57 @@ def test_comment_markers_inside_strings_are_kept(tmp_path):
     assert _scan(tmp_path, sql) == []
 
 
+def test_quoted_option_name_false_is_a_finding(tmp_path):
+    sql = 'create view v_bad with ("security_invoker" = false) as select 1;'
+    assert len(_scan(tmp_path, sql)) == 1
+
+
+def test_quoted_option_name_true_is_safe(tmp_path):
+    sql = 'create view v_ok with ("security_invoker" = true) as select 1;'
+    assert _scan(tmp_path, sql) == []
+
+
+def test_column_named_security_invoker_is_a_finding(tmp_path):
+    sql = "create view v_bad (security_invoker) as select 1;"
+    assert len(_scan(tmp_path, sql)) == 1
+
+
+def test_column_named_security_invoker_does_not_hide_false_option(tmp_path):
+    sql = (
+        "create view v_bad (security_invoker) "
+        "with (security_invoker = false) as select 1;"
+    )
+    assert len(_scan(tmp_path, sql)) == 1
+
+
+def test_column_list_with_true_option_is_safe(tmp_path):
+    sql = (
+        "create view v_ok (security_invoker) "
+        "with (security_barrier, security_invoker = true) as select 1;"
+    )
+    assert _scan(tmp_path, sql) == []
+
+
+def test_escape_string_with_backslash_quote_does_not_hide_view(tmp_path):
+    sql = (
+        "select E'it\\'s /* text';\n"
+        "create view v_bad as select 1;\n"
+    )
+    findings = _scan(tmp_path, sql)
+    assert len(findings) == 1
+    assert findings[0].location.endswith(":2")
+
+
+def test_dollar_tag_with_digits_does_not_hide_view(tmp_path):
+    sql = (
+        "select $body1$/* literal text$body1$;\n"
+        "create view v_bad as select 1;\n"
+    )
+    findings = _scan(tmp_path, sql)
+    assert len(findings) == 1
+    assert findings[0].location.endswith(":2")
+
+
 def test_repo_migrations_pass():
     root = _AUDIT_PATH.parents[2]
     assert audit.scan_migrations(root / "supabase" / "migrations") == []

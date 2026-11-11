@@ -28,11 +28,18 @@ _CREATE_VIEW = re.compile(
     re.IGNORECASE,
 )
 
-# `security_invoker` with an optional `= value`; the value may be quoted.
+# The view's `WITH (...)` options list; a column list before it is not options.
+_WITH_OPTIONS = re.compile(r"\bwith\s*\(([^)]*)\)", re.IGNORECASE)
+# `security_invoker` (optionally a quoted identifier) with an optional `= value`;
+# the value may be quoted.
 _SECURITY_INVOKER = re.compile(
-    r"\bsecurity_invoker\b(?:\s*=\s*('[^']*'|\"[^\"]*\"|[A-Za-z0-9_]+))?",
+    r"(?:\"security_invoker\"|\bsecurity_invoker\b)"
+    r"(?:\s*=\s*('[^']*'|\"[^\"]*\"|[A-Za-z0-9_]+))?",
     re.IGNORECASE,
 )
+# Dollar-quote opening tag: `$$` or `$tag$`, tag an identifier (digits allowed
+# after the first character).
+_DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 # Postgres boolean spellings it accepts for reloptions.
 _TRUE_VALUES = {"true", "on", "yes", "1", "t", "y"}
 
@@ -40,8 +47,9 @@ _TRUE_VALUES = {"true", "on", "yes", "1", "t", "y"}
 def strip_sql_comments(text: str) -> str:
     """Blank out `--` and `/* */` comments, keeping newlines so line numbers hold.
 
-    Single-quoted strings, double-quoted identifiers and dollar-quoted bodies are
-    skipped so comment markers inside them are left alone.
+    Single-quoted strings (including `E'...'` escape strings with backslash
+    escapes), double-quoted identifiers and dollar-quoted bodies are skipped so
+    comment markers inside them are left alone.
     """
     out: list[str] = []
     i, n = 0, len(text)
@@ -65,8 +73,18 @@ def strip_sql_comments(text: str) -> str:
             out.append("".join(c if c == "\n" else " " for c in text[i:j]))
             i = j
         elif ch in ("'", '"'):
+            # E'...' allows backslash escapes, e.g. E'it\'s'.
+            backslash_escapes = (
+                ch == "'"
+                and i > 0
+                and text[i - 1] in "eE"
+                and (i < 2 or not (text[i - 2].isalnum() or text[i - 2] == "_"))
+            )
             j = i + 1
             while j < n:
+                if backslash_escapes and text[j] == "\\":
+                    j += 2
+                    continue
                 if text[j] == ch:
                     if j + 1 < n and text[j + 1] == ch:  # doubled quote escape
                         j += 2
@@ -76,7 +94,7 @@ def strip_sql_comments(text: str) -> str:
             out.append(text[i : j + 1])
             i = j + 1
         elif ch == "$":
-            m = re.match(r"\$[A-Za-z_]*\$", text[i:])
+            m = _DOLLAR_TAG.match(text, i)
             if m:
                 tag = m.group(0)
                 end = text.find(tag, i + len(tag))
@@ -93,8 +111,15 @@ def strip_sql_comments(text: str) -> str:
 
 
 def security_invoker_enabled(header: str) -> bool:
-    """True when the view header sets `security_invoker` to a true value."""
-    match = _SECURITY_INVOKER.search(header)
+    """True when the view's `WITH (...)` options set `security_invoker` to true.
+
+    Only the options list is searched, so a column named `security_invoker` in
+    the view's column list does not count.
+    """
+    options = _WITH_OPTIONS.search(header)
+    if not options:
+        return False
+    match = _SECURITY_INVOKER.search(options.group(1))
     if not match:
         return False
     value = match.group(1)
