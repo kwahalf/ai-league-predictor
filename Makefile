@@ -57,9 +57,11 @@ migrate: backup
 	@$(STACK_ENV) supabase migration up --local
 
 # Dump the stack's database to $(BACKUP_DIR)/<stack>-<UTC timestamp>.sql.gz
+# Dumps can contain auth data and the runner is shared: the directory is owner-only (700)
+# and every archive is created owner-only (600).
 backup:
-	@mkdir -p $(BACKUP_DIR)
-	@set -o pipefail; $(STACK_ENV) out="$(BACKUP_DIR)/$$STACK_NAME-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz" && \
+	@umask 077; mkdir -p $(BACKUP_DIR) && chmod 700 $(BACKUP_DIR) && find $(BACKUP_DIR) -type f -exec chmod 600 {} +
+	@umask 077; set -o pipefail; $(STACK_ENV) out="$(BACKUP_DIR)/$$STACK_NAME-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz" && \
 		if docker exec "supabase_db_$$SUPABASE_PROJECT_ID" pg_dump -U postgres postgres | gzip > "$$out" && \
 			[ "$$(gzip -dc "$$out" | head -c 1 | wc -c)" -eq 1 ]; then echo "Backup written to $$out"; \
 		else rm -f "$$out"; echo "Backup FAILED for stack $$STACK_NAME: nothing was changed." >&2; exit 1; fi
