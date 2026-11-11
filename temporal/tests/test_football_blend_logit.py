@@ -122,3 +122,24 @@ def test_rejects_bad_input() -> None:
         fit_blend(np.zeros((0, 7)), np.zeros(0, dtype=int))
     with pytest.raises(ValueError):
         fit_blend(np.zeros((3, 7)), np.zeros(3, dtype=int), l2=-1.0)
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        np.array([0, 1, -1]),  # -1 would index the away column
+        np.array([0, 1, 3]),
+        np.array([0.0, 1.5, 2.0]),  # would be truncated to 1
+        np.array([[0], [1], [2]]),  # (n, 1) would broadcast the likelihood lookup
+    ],
+)
+def test_rejects_bad_outcome_labels(labels) -> None:
+    with pytest.raises(ValueError):
+        fit_blend(np.zeros((3, 7)), labels)
+
+
+def test_accepts_integral_float_labels() -> None:
+    x, y, _, _ = synthetic(300, seed=6)
+    a = fit_blend(x, y.astype(float), l2=10.0)
+    b = fit_blend(x, y, l2=10.0)
+    assert a == b

@@ -165,7 +165,10 @@ def fit_blend(
     1 draw, 2 away). ``start`` warm-starts the optimiser (the objective is
     strictly convex for ``l2 > 0``, so the answer depends on it only within the tolerance)."""
     x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=int)
+    labels = np.asarray(y)
+    if labels.ndim != 1 or not np.isin(labels, (0, 1, 2)).all():
+        raise ValueError("outcomes must be a 1-D array of 0 (home), 1 (draw) or 2 (away)")
+    y = labels.astype(int)
     if x.ndim != 2 or x.shape[1] != _N_FEAT or len(x) != len(y) or len(y) == 0:
         raise ValueError(f"need n × {_N_FEAT} inputs and n outcomes, n > 0; got {x.shape}")
     if l2 < 0:

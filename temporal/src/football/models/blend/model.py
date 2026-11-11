@@ -25,7 +25,7 @@ recorded and starts again, as on a fresh model.
 
 **Minimum out-of-sample history.** The logit is fitted once at least ``min_train`` training rows
 exist (default ``DEFAULT_MIN_TRAIN`` = 380, one Premier League season of predicted matches with
-odds) and refitted every window after that on all rows so far (an expanding window). Before that
+odds) and every outcome (home win, draw, away win) occurs among them, and refitted every window after that on all rows so far (an expanding window). Before that
 the headline is the penalty's prior, i.e. the margin-free market consensus with the default
 prior (see ``logit``). In the backtest that means 2017/18, the first predicted season, is the
 consensus, and the blend is fitted from the first window of 2018/19.
@@ -189,7 +189,10 @@ class BlendModel:
                 self._train_y.append(_OUTCOME[record.result])
         self.as_of = as_of
         n = len(self._train_y)
-        if n >= self.min_train and n != self._trained_on:
+        # All three outcomes must have occurred: the intercepts are unpenalised, so a missing
+        # outcome would have no finite optimum (its intercept would run off to -infinity).
+        all_outcomes = len(set(self._train_y)) == len(_OUTCOME)
+        if n >= self.min_train and all_outcomes and n != self._trained_on:
             self._trained = fit_blend(
                 np.array(self._train_x),
                 np.array(self._train_y),

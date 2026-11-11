@@ -219,6 +219,19 @@ def test_a_history_that_does_not_continue_resets_recorded_state() -> None:
     assert model.n_training_rows == 0
 
 
+def test_waits_for_every_outcome_before_fitting() -> None:
+    """With min_train=1 the first rows may all be one outcome; the unpenalised intercepts would
+    have no finite optimum, so the prior is kept until home, draw and away have all occurred."""
+    records = synthetic_league(n_seasons=2)
+    model = RecordingBlend(min_train=1)
+    run_backtest(records, model, warmup_seasons=("1617",))
+    predicted = sorted((r for r in records if r.season == "1718"), key=lambda r: r.match_date)
+    for as_of, weights in sorted(model.weights_by_window.items()):
+        seen = {r.result for r in predicted if r.match_date < as_of}
+        assert (weights.n_train > 0) == (len(seen) == 3), as_of
+    assert model.weights_trained
+
+
 # --- Prior, fallback, forecast -----------------------------------------------------------------
 
 
